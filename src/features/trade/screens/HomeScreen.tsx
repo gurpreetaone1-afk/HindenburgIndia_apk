@@ -12,7 +12,6 @@ import { IntradayChartCard } from "@features/trade/components/IntradayChartCard"
 import { MarketOverview } from "@features/trade/components/MarketOverview";
 import { MarketNews } from "@features/trade/components/MarketNews";
 import { InstrumentSearchOverlay } from "@features/trade/components/InstrumentSearchOverlay";
-import { BinaryHomeCard } from "@features/binary/components/BinaryHomeCard";
 import { useTickers } from "@features/trade/hooks/useTickers";
 import { useTickerStore } from "@features/trade/store/ticker.store";
 
@@ -106,7 +105,6 @@ export function HomeScreen() {
         contentContainerStyle={{ gap: 18, paddingBottom: 32, paddingTop: 8 }}
       >
         <IndicesStrip data={indices} />
-        <BinaryHomeCard />
         {primary ? (
           <IntradayChartCard
             symbol={primary.symbol}
