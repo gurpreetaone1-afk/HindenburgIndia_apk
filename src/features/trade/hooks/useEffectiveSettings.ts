@@ -1,0 +1,108 @@
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@core/api/client";
+import { unwrap } from "@core/api/errors";
+
+/**
+ * Server-resolved trading settings for one (instrument, side, product) tuple.
+ * Mirrors the response from `GET /user/segment-settings/effective`. Only the
+ * fields the APK trade UI actually reads are typed here — the backend returns
+ * many more (commission tiers, risk caps, etc.) which we leave as
+ * `Record<string, unknown>` to avoid coupling the APK to every admin knob.
+ */
+export interface EffectiveSettings {
+  segment_type: string;
+  lot_size: number;
+  allow?: boolean;
+  // Lot limits — admin-configured per segment/template/user. The default lot
+  // shown in the trade sheet comes from `order_lot` (admin's "default order
+  // lot"), falling back to `min_lot` if that's null.
+  min_lot?: number | null;
+  max_lot?: number | null;
+  order_lot?: number | null;
+  intraday_lot_limit?: number | null;
+  holding_lot_limit?: number | null;
+  max_each_lot?: number | null;
+  // Margin / leverage — the ACTIVE tier for the requested product_type.
+  // For an NRML/CNC-default segment (Infoway forex/crypto) these switch to
+  // the overnight numbers, so the UI must read the explicit intraday_* /
+  // overnight_* fields below to keep both margin tiles distinct + correct.
+  margin_percentage?: number | null;
+  leverage?: number | null;
+  margin_calc_mode?: string | null;
+  fixed_margin_per_lot?: number | null;
+  // Always-intraday (MIS) tier — read these for the "Intraday margin" tile.
+  intraday_margin_percentage?: number | null;
+  intraday_leverage?: number | null;
+  intraday_fixed_margin_per_lot?: number | null;
+  // Carry-forward (overnight / NRML) tier — read these for the
+  // "Carry forward" tile.
+  overnight_margin_percentage?: number | null;
+  overnight_leverage?: number | null;
+  overnight_fixed_margin_per_lot?: number | null;
+}
+
+export function useEffectiveSettings(
+  token: string | null | undefined,
+  action: "BUY" | "SELL" = "BUY",
+  productType: "MIS" | "NRML" | "CNC" = "MIS",
+) {
+  return useQuery<EffectiveSettings>({
+    queryKey: ["segment-settings", "effective", token, action, productType],
+    queryFn: () =>
+      unwrap<EffectiveSettings>(
+        api.get("/user/segment-settings/effective", {
+          params: { token, action, product_type: productType },
+        }),
+      ),
+    enabled: !!token,
+    // Admin can edit these in real time, but the values are stable per-user
+    // for minutes at a time — 30s is the same TTL the backend uses for the
+    // Redis-cached resolver, so any longer here just wastes a roundtrip.
+    staleTime: 30_000,
+    // CRITICAL override of the global `refetchOnMount: false` default.
+    // The APK ships with a 24-hour AsyncStorage persister (see
+    // QueryProvider.tsx) which rehydrates every cached query on app
+    // launch. With the global `refetchOnMount: false` the trade panel
+    // happily served a 24-hour-old `lot_size` even after admin / heal
+    // script fixed it server-side — user-reported "web me 25 a gaya
+    // par apk me 1 hi dikha raha" bug, where BOSCHLTD26JULFUT showed
+    // Lot Size 1 in APK despite the heal having set it to 25.
+    // "always" forces a network fetch every time the trade sheet opens,
+    // so admin changes propagate within one mount instead of waiting on
+    // the next 30 s stale window (which never fired if the user only
+    // briefly visited the panel).
+    refetchOnMount: "always",
+    retry: 1,
+  });
+}
+
+/**
+ * Resolve the "default lot to show in the lot input" from admin settings.
+ *
+ * Resolution order: `min_lot → order_lot → 1`. We deliberately prefer
+ * `min_lot` over `order_lot` because the admin's "minimum lot" is the
+ * smallest size a user is *allowed* to trade in that segment — for
+ * fractional segments (forex, crypto, MCX commodity) admins typically set
+ * `minLots = 0.01`, and the user expects the form to land on that minimum,
+ * not on a higher template-default `orderLots` value. (Previously the
+ * priority was reversed and the form opened at "1" for crypto/forex even
+ * after the admin set min = 0.01.)
+ *
+ * Returns a string because the input is string-backed (avoids React
+ * controlled-input flicker from Number → string conversions on every
+ * keystroke).
+ */
+export function pickDefaultLot(settings: EffectiveSettings | undefined): string {
+  if (!settings) return "1";
+  const minLot = Number(settings.min_lot ?? 0);
+  const orderLot = Number(settings.order_lot ?? 0);
+  const candidate = (minLot > 0 ? minLot : 0) || (orderLot > 0 ? orderLot : 0) || 1;
+  // Strip trailing zeros for nicer display (1.00 → "1", 0.10 → "0.1").
+  return String(Number(candidate.toFixed(4)));
+}
+
+export function pickMinLot(settings: EffectiveSettings | undefined): number {
+  if (!settings) return 0.01;
+  const v = Number(settings.min_lot ?? 0);
+  return v > 0 ? v : 0.01;
+}
