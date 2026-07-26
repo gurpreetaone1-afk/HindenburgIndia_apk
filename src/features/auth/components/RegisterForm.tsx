@@ -1,14 +1,18 @@
-import { memo } from "react";
-import { View } from "react-native";
+import { memo, useRef, useState } from "react";
+import { Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { Input } from "@shared/ui/Input";
+import { OtpInput } from "@shared/ui/OtpInput";
 import { GradientButton } from "@shared/ui/GradientButton";
 import { Text } from "@shared/ui/Text";
 import { colors, radii, spacing } from "@shared/theme";
 import { registerSchema, type RegisterValues } from "@features/auth/schemas/auth.schema";
 import { useRegister } from "@features/auth/hooks/useAuth";
+import { AuthAPI } from "@features/auth/api/auth.api";
+import { ApiError } from "@core/api/errors";
 import { useUiStore } from "@shared/store/ui.store";
 
 // Mirror the password rules from auth.schema.ts (which mirrors the backend
@@ -76,6 +80,80 @@ function RegisterFormImpl() {
   const passwordValue = useWatch({ control, name: "password" }) ?? "";
   const reg = useRegister();
   const pushToast = useUiStore((s) => s.pushToast);
+
+  // Verify-first signup: step "form" collects details and emails a code;
+  // step "otp" verifies it by creating the account with the code.
+  const [step, setStep] = useState<"form" | "otp">("form");
+  const [otp, setOtp] = useState("");
+  const pending = useRef<RegisterValues | null>(null);
+
+  const sendOtp = useMutation({
+    mutationFn: (email: string) => AuthAPI.requestOtp(email, "register"),
+    onSuccess: () => {
+      setStep("otp");
+      setOtp("");
+      pushToast({
+        kind: "success",
+        message: `We sent a 6-digit code to ${pending.current?.email}`,
+      });
+    },
+    onError: (e: ApiError) =>
+      pushToast({ kind: "error", message: e.message || "Could not send code" }),
+  });
+
+  function verifyAndCreate() {
+    const v = pending.current;
+    if (!v) return;
+    if (otp.trim().length < 4) {
+      pushToast({ kind: "error", message: "Enter the 6-digit code from your email" });
+      return;
+    }
+    reg.mutate({
+      email: v.email,
+      mobile: v.mobile,
+      password: v.password,
+      full_name: v.full_name,
+      otp: otp.trim(),
+    });
+  }
+
+  if (step === "otp") {
+    return (
+      <View style={{ gap: 16 }}>
+        <View style={{ gap: 4 }}>
+          <Text size="lg" style={{ fontWeight: "700", color: colors.text }}>
+            Verify your email
+          </Text>
+          <Text size="sm" style={{ color: colors.textMuted }}>
+            Enter the 6-digit code we sent to {pending.current?.email}
+          </Text>
+        </View>
+        <OtpInput value={otp} onChange={setOtp} />
+        <GradientButton
+          label="Verify & create account"
+          loading={reg.isPending}
+          onPress={verifyAndCreate}
+        />
+        <View
+          style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}
+        >
+          <Pressable onPress={() => setStep("form")} disabled={reg.isPending}>
+            <Text size="sm" style={{ color: colors.textMuted, fontWeight: "600" }}>
+              ← Edit details
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => pending.current && sendOtp.mutate(pending.current.email)}
+            disabled={sendOtp.isPending}
+          >
+            <Text size="sm" style={{ color: colors.primary, fontWeight: "700" }}>
+              {sendOtp.isPending ? "Sending…" : "Resend code"}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={{ gap: 14 }}>
@@ -158,19 +236,18 @@ function RegisterFormImpl() {
       />
       <View style={{ marginTop: 8 }}>
         <GradientButton
-          label="Create account"
-          loading={reg.isPending}
+          label="Continue"
+          loading={sendOtp.isPending}
           onPress={handleSubmit(
-            (v) =>
-              reg.mutate({
-                email: v.email,
-                mobile: v.mobile,
-                password: v.password,
-                full_name: v.full_name,
-              }),
+            (v) => {
+              // Stash the validated details and email an OTP; the account is
+              // only created after the code is verified on the next step.
+              pending.current = v;
+              sendOtp.mutate(v.email);
+            },
             // Surface a toast when validation fails — otherwise the user
-            // taps "Create account" and nothing visible happens because
-            // the offending field (usually Confirm-password) is below the
+            // taps "Continue" and nothing visible happens because the
+            // offending field (usually Confirm-password) is below the
             // keyboard and they never see the inline error.
             (errors) => {
               const first =

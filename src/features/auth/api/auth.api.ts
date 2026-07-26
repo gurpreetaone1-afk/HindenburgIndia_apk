@@ -14,6 +14,9 @@ export interface RegisterInput {
   mobile: string;
   password: string;
   full_name: string;
+  // Email OTP (from AuthAPI.requestOtp with purpose "register"). Verified
+  // server-side at account creation — verify-first signup.
+  otp: string;
   pan?: string;
 }
 
@@ -34,6 +37,10 @@ export interface ChangePasswordInput {
 export const AuthAPI = {
   login: (body: LoginInput) =>
     unwrap<LoginResponse>(api.post("/user/auth/login", body)),
+  // Send an email OTP. purpose "register" verifies a NEW email before signup
+  // (backend rejects already-registered emails here).
+  requestOtp: (identifier: string, purpose: "register" | "reset_password" = "register") =>
+    unwrap(api.post("/user/auth/otp/request", { identifier, purpose })),
   register: (body: RegisterInput) =>
     unwrap<User>(api.post("/user/auth/register", body)),
   logout: (refresh_token?: string) =>
