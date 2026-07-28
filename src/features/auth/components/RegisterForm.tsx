@@ -74,7 +74,14 @@ function PasswordChecklist({ value }: { value: string }) {
 function RegisterFormImpl() {
   const { control, handleSubmit } = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { full_name: "", email: "", mobile: "", password: "", confirm: "" },
+    defaultValues: {
+      full_name: "",
+      email: "",
+      mobile: "",
+      password: "",
+      confirm: "",
+      referral_code: "",
+    },
     mode: "onChange",
   });
   const passwordValue = useWatch({ control, name: "password" }) ?? "";
@@ -82,19 +89,38 @@ function RegisterFormImpl() {
   const pushToast = useUiStore((s) => s.pushToast);
 
   // Verify-first signup: step "form" collects details and emails a code;
-  // step "otp" verifies it by creating the account with the code.
+  // step "otp" verifies it by creating the account with the code. When the
+  // owning admin (from referral_code) has register-OTP off, we skip the code
+  // step and create the account straight away.
   const [step, setStep] = useState<"form" | "otp">("form");
   const [otp, setOtp] = useState("");
   const pending = useRef<RegisterValues | null>(null);
 
+  function createAccount(v: RegisterValues, code?: string) {
+    reg.mutate({
+      email: v.email,
+      mobile: v.mobile,
+      password: v.password,
+      full_name: v.full_name,
+      referral_code: v.referral_code?.trim() || undefined,
+      ...(code ? { otp: code } : {}),
+    });
+  }
+
   const sendOtp = useMutation({
-    mutationFn: (email: string) => AuthAPI.requestOtp(email, "register"),
-    onSuccess: () => {
+    mutationFn: (v: RegisterValues) =>
+      AuthAPI.requestOtp(v.email, "register", v.referral_code?.trim() || undefined),
+    onSuccess: (res, v) => {
+      // Admin turned register-OTP off → no code needed, register directly.
+      if (res?.otp_required === false) {
+        createAccount(v);
+        return;
+      }
       setStep("otp");
       setOtp("");
       pushToast({
         kind: "success",
-        message: `We sent a 6-digit code to ${pending.current?.email}`,
+        message: `We sent a 6-digit code to ${v.email}`,
       });
     },
     onError: (e: ApiError) =>
@@ -108,13 +134,7 @@ function RegisterFormImpl() {
       pushToast({ kind: "error", message: "Enter the 6-digit code from your email" });
       return;
     }
-    reg.mutate({
-      email: v.email,
-      mobile: v.mobile,
-      password: v.password,
-      full_name: v.full_name,
-      otp: otp.trim(),
-    });
+    createAccount(v, otp.trim());
   }
 
   if (step === "otp") {
@@ -143,7 +163,7 @@ function RegisterFormImpl() {
             </Text>
           </Pressable>
           <Pressable
-            onPress={() => pending.current && sendOtp.mutate(pending.current.email)}
+            onPress={() => pending.current && sendOtp.mutate(pending.current)}
             disabled={sendOtp.isPending}
           >
             <Text size="sm" style={{ color: colors.primary, fontWeight: "700" }}>
@@ -234,16 +254,32 @@ function RegisterFormImpl() {
           />
         )}
       />
+      <Controller
+        control={control}
+        name="referral_code"
+        render={({ field, fieldState }) => (
+          <Input
+            label="Referral code (optional)"
+            value={field.value ?? ""}
+            onChangeText={(t) => field.onChange(t.toUpperCase().replace(/\s/g, ""))}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            autoCapitalize="characters"
+            placeholder="Admin referral code, e.g. ADM12087609"
+          />
+        )}
+      />
       <View style={{ marginTop: 8 }}>
         <GradientButton
           label="Continue"
-          loading={sendOtp.isPending}
+          loading={sendOtp.isPending || reg.isPending}
           onPress={handleSubmit(
             (v) => {
-              // Stash the validated details and email an OTP; the account is
-              // only created after the code is verified on the next step.
+              // Stash the validated details and ask the server for an OTP. If
+              // the owning admin has register-OTP off, requestOtp replies
+              // otp_required=false and we register directly (see sendOtp).
               pending.current = v;
-              sendOtp.mutate(v.email);
+              sendOtp.mutate(v);
             },
             // Surface a toast when validation fails — otherwise the user
             // taps "Continue" and nothing visible happens because the

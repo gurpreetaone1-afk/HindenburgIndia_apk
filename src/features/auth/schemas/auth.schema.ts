@@ -35,6 +35,9 @@ export const registerSchema = z
     mobile: z.string().refine(isValidMobileIN, "Invalid mobile"),
     password: passwordRule,
     confirm: z.string(),
+    // Optional admin referral code — links the new account to that admin's
+    // pool. Left blank → platform / super-admin pool.
+    referral_code: z.string().optional(),
   })
   .refine((v) => v.password === v.confirm, {
     message: "Passwords do not match",

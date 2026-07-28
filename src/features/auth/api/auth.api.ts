@@ -14,10 +14,21 @@ export interface RegisterInput {
   mobile: string;
   password: string;
   full_name: string;
-  // Email OTP (from AuthAPI.requestOtp with purpose "register"). Verified
-  // server-side at account creation — verify-first signup.
-  otp: string;
+  // Email OTP (from AuthAPI.requestOtp with purpose "register"). Optional —
+  // the owning admin (resolved from referral_code) may have register-OTP
+  // turned off, in which case the server registers directly without a code.
+  otp?: string;
+  // Admin referral code (their user_code). Attributes this signup to that
+  // admin's pool. Optional; omitted → platform / super-admin pool.
+  referral_code?: string;
   pan?: string;
+}
+
+// Response from POST /user/auth/otp/request. otp_required=false means the
+// owning admin disabled register-OTP → the client should register directly.
+export interface RequestOtpResult {
+  otp_required: boolean;
+  message?: string;
 }
 
 export interface LoginResponse extends TokenPair {
@@ -38,9 +49,17 @@ export const AuthAPI = {
   login: (body: LoginInput) =>
     unwrap<LoginResponse>(api.post("/user/auth/login", body)),
   // Send an email OTP. purpose "register" verifies a NEW email before signup
-  // (backend rejects already-registered emails here).
-  requestOtp: (identifier: string, purpose: "register" | "reset_password" = "register") =>
-    unwrap(api.post("/user/auth/otp/request", { identifier, purpose })),
+  // (backend rejects already-registered emails). Pass the admin referral_code
+  // so the server can decide whether that admin requires OTP; the response's
+  // otp_required flag tells the client whether to collect a code.
+  requestOtp: (
+    identifier: string,
+    purpose: "register" | "reset_password" = "register",
+    referral_code?: string,
+  ) =>
+    unwrap<RequestOtpResult>(
+      api.post("/user/auth/otp/request", { identifier, purpose, referral_code }),
+    ),
   register: (body: RegisterInput) =>
     unwrap<User>(api.post("/user/auth/register", body)),
   logout: (refresh_token?: string) =>
