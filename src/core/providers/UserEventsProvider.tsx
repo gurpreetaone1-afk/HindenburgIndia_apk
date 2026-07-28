@@ -104,7 +104,16 @@ function handleEvent(
         void qc.invalidateQueries({ queryKey: ["orders"] });
       });
       return;
+    // Accept every position-event type the backend emits. It publishes
+    // "positions" (plural — expiry/weekly settlement, position_service.py)
+    // and "position_update" (admin trading actions) on the user channel, NOT
+    // the singular "position" this switch originally matched — so those
+    // server-initiated closes only refreshed via the 5–20 s poll instead of
+    // instantly. Matching all three restores instant refresh + cross-device
+    // sync without touching the backend (web keeps its own naming).
     case "position":
+    case "positions":
+    case "position_update":
       notifyManager.batch(() => {
         void qc.invalidateQueries({ queryKey: ["positions"] });
         void qc.invalidateQueries({ queryKey: ["holdings"] });
