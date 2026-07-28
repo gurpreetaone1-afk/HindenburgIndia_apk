@@ -479,6 +479,20 @@ export const TradeSheet = forwardRef<TradeSheetRef, TradeSheetProps>(({ initialA
       pushToast({ kind: "warn", message: "Enter lots greater than 0" });
       return;
     }
+    // ── Segment paused / blocked pre-check ────────────────────────
+    // The admin can pause (trading_enabled=false) or block (is_active=false)
+    // a segment; the backend collapses both into `allow=false` on the
+    // effective settings and rejects the order (SEGMENT_NOT_ALLOWED). Mirror
+    // it here so the user gets one clear message instead of a place→reject
+    // flicker. Only enforce once settings have loaded AND allow is explicitly
+    // false — an undefined/true value never blocks.
+    if (effective.data && effective.data.allow === false) {
+      pushToast({
+        kind: "warn",
+        message: "Trading is disabled for this segment right now.",
+      });
+      return;
+    }
     // ── Admin per-order lot cap pre-check ─────────────────────────
     // Backend rejects with code `LOT_PER_ORDER_MAX` when `lots`
     // exceeds the admin's `order_lot` cap. Without this client-side

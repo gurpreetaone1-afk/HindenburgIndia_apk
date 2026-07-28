@@ -7,7 +7,7 @@ export type OrderStatus =
   | "REJECTED";
 
 export type OrderAction = "BUY" | "SELL";
-export type OrderType = "MARKET" | "LIMIT" | "SL" | "SL-M";
+export type OrderType = "MARKET" | "LIMIT" | "SL" | "SL_M";
 export type ProductType = "MIS" | "NRML" | "CNC";
 export type Validity = "DAY" | "IOC" | "GTC";
 

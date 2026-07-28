@@ -310,7 +310,7 @@ function EditOrderModal({
   if (!order) return null;
 
   const isLimit = order.order_type === "LIMIT";
-  const isSlOrSlm = order.order_type === "SL" || order.order_type === "SL-M";
+  const isSlOrSlm = order.order_type === "SL" || order.order_type === "SL_M";
 
   function submit() {
     if (!order) return;

@@ -20,7 +20,7 @@ export const placeOrderSchema = z
     { message: "Price required", path: ["price"] },
   )
   .refine(
-    (v) => !["SL", "SL-M"].includes(v.order_type) || !!v.trigger_price,
+    (v) => !["SL", "SL_M"].includes(v.order_type) || !!v.trigger_price,
     { message: "Trigger required", path: ["trigger_price"] },
   );
 

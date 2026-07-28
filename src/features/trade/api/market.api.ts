@@ -1,6 +1,6 @@
 import { api } from "@core/api/client";
 import { unwrap } from "@core/api/errors";
-import type { Instrument, MarketDepth, Tick } from "@features/trade/types/instrument.types";
+import type { Instrument } from "@features/trade/types/instrument.types";
 import type {
   OptionChainConfig,
   OptionChainResponse,
@@ -36,10 +36,10 @@ export const MarketAPI = {
     unwrap<Instrument>(api.get(`/user/instruments/${encodeURIComponent(token)}`)),
   quote: (token: string) =>
     unwrap<Quote>(api.get(`/user/instruments/${encodeURIComponent(token)}/quote`)),
-  ltp: (tokens: string[]) =>
-    unwrap<Tick[]>(api.get("/user/market/ltp", { params: { tokens: tokens.join(",") } })),
-  depth: (token: string) =>
-    unwrap<MarketDepth>(api.get(`/user/market/${encodeURIComponent(token)}/depth`)),
+  // NOTE: live LTP comes from the WS feed (marketdata.service) and single
+  // quotes from /instruments/{token}/quote. The old `ltp`/`depth` helpers
+  // pointed at /user/market/* routes that don't exist on the backend (404)
+  // and had no callers — removed to avoid future dead calls.
 };
 
 export const OptionChainAPI = {
