@@ -142,21 +142,6 @@ export function useUploadScreenshot() {
   });
 }
 
-export function useAddBankAccount() {
-  const qc = useQueryClient();
-  const pushToast = useUiStore((s) => s.pushToast);
-  return useMutation({
-    mutationFn: (body: Partial<UserBank>) => WalletAPI.addBankAccount(body),
-    onMutate: () => {
-      pushToast({
-        kind: "success",
-        message: "Bank account added",
-        ttlMs: 1500,
-      });
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: MY_BANKS_KEY });
-    },
-    onError: (e: ApiError) => pushToast({ kind: "error", message: e.message }),
-  });
-}
+// Bank-account writes live in `useBankAccounts` — they need the 5-account
+// cap and the OTP challenge, which this file has no business knowing about.
+// Only the read query stays here alongside the rest of the wallet cache.

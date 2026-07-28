@@ -1,0 +1,39 @@
+# Normalise line endings across every OS. Without this, Windows'
+# core.autocrlf=true rewrites LF→CRLF on checkout and spams a warning on
+# every add. Pinning eol=lf means the repo always stores (and checks out)
+# LF, so the working copy matches the index and git stops converting.
+* text=auto eol=lf
+
+# Source + config — always LF.
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.jsx   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.css   text eol=lf
+*.svg   text eol=lf
+*.env   text eol=lf
+
+# Windows-only scripts stay CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binary assets — never touch.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.mp3   binary
+*.mp4   binary
+*.keystore binary
+*.jks   binary

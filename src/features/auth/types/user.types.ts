@@ -15,4 +15,7 @@ export interface User {
   must_change_password?: boolean;
   pan?: string;
   kyc_status?: KycStatus;
+  /** Set by the (currently flag-gated) email verification flow. Absent on
+   *  backends that don't track it — treated as "not verified". */
+  email_verified?: boolean;
 }

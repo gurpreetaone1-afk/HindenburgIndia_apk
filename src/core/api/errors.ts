@@ -153,6 +153,16 @@ export function isSessionBust(err: unknown): boolean {
   return err instanceof ApiError && SESSION_BUST_CODES.has(err.code);
 }
 
+/** Like `unwrap`, for endpoints whose success envelope carries no payload
+ *  (DELETE, logout). `unwrap` treats `data: null` as a failure — here a
+ *  `success: true` body with an empty payload is the expected shape, while
+ *  a `success: false` body still throws the same normalised ApiError. */
+export function unwrapVoid(p: Promise<{ data: ApiResponse<unknown> }>): Promise<void> {
+  return unwrap<unknown>(
+    p.then((res) => ({ data: { ...res.data, data: res.data?.data ?? true } })),
+  ).then(() => undefined);
+}
+
 export async function unwrap<T>(p: Promise<{ data: ApiResponse<T> }>): Promise<T> {
   try {
     const res = await p;

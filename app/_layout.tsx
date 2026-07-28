@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@shared/components/ErrorBoundary";
 import { bootstrapStorage } from "@core/storage/mmkv";
 import { useThemeStore } from "@shared/store/theme.store";
 import { preloadBiometricCapability } from "@core/security/biometric";
+import { SupportFab } from "@features/support/components/SupportFab";
 import { colors } from "@shared/theme";
 
 export default function RootLayout() {
@@ -62,18 +63,24 @@ export default function RootLayout() {
     // hydration so cold boot doesn't trigger a wasteful remount.
     <AppProviders>
       <ErrorBoundary>
-        <Stack
-          key={themeNonce}
-          screenOptions={{
-            headerShown: false,
-            // Native fast slide on push — "fade" was a 300 ms cross-fade
-            // that felt like a load spinner. Slide animation is ~180 ms
-            // and feels instant.
-            animation: "slide_from_right",
-            animationDuration: 180,
-            contentStyle: { backgroundColor: colors.bg },
-          }}
-        />
+        {/* The support bubble is a sibling of the Stack so it floats over
+            every screen from one mount point. It hides itself on the auth
+            flow and on full-screen routes. */}
+        <View style={{ flex: 1 }}>
+          <Stack
+            key={themeNonce}
+            screenOptions={{
+              headerShown: false,
+              // Native fast slide on push — "fade" was a 300 ms cross-fade
+              // that felt like a load spinner. Slide animation is ~180 ms
+              // and feels instant.
+              animation: "slide_from_right",
+              animationDuration: 180,
+              contentStyle: { backgroundColor: colors.bg },
+            }}
+          />
+          <SupportFab />
+        </View>
       </ErrorBoundary>
     </AppProviders>
   );

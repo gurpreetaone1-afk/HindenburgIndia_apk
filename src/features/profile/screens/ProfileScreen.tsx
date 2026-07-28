@@ -178,33 +178,40 @@ export function ProfileScreen() {
           </ProfileSection>
         </View>
 
-        {hasSupport ? (
-          <View style={{ marginTop: 12 }}>
-            <ProfileSection title="Support">
-              {supportWaUrl ? (
-                <Row
-                  icon="logo-whatsapp"
-                  title="WhatsApp support"
-                  subtitle={support?.whatsapp || "Chat with us"}
-                  divider={!!supportEmailUrl}
-                  onPress={() => {
-                    void Linking.openURL(supportWaUrl);
-                  }}
-                />
-              ) : null}
-              {supportEmailUrl ? (
-                <Row
-                  icon="mail-outline"
-                  title="Email support"
-                  subtitle={support?.email || "support@hindenburgindia.live"}
-                  onPress={() => {
-                    void Linking.openURL(supportEmailUrl);
-                  }}
-                />
-              ) : null}
-            </ProfileSection>
-          </View>
-        ) : null}
+        {/* Live chat always shows — it's in-app and needs no admin contact
+            row. WhatsApp / email stay conditional on `/user/support`. */}
+        <View style={{ marginTop: 12 }}>
+          <ProfileSection title="Support">
+            <Row
+              icon="chatbubbles-outline"
+              title="Live chat"
+              subtitle="Chat with the support team"
+              divider={hasSupport}
+              onPress={() => router.push("/support")}
+            />
+            {supportWaUrl ? (
+              <Row
+                icon="logo-whatsapp"
+                title="WhatsApp support"
+                subtitle={support?.whatsapp || "Chat with us"}
+                divider={!!supportEmailUrl}
+                onPress={() => {
+                  void Linking.openURL(supportWaUrl);
+                }}
+              />
+            ) : null}
+            {supportEmailUrl ? (
+              <Row
+                icon="mail-outline"
+                title="Email support"
+                subtitle={support?.email || "support@hindenburgindia.live"}
+                onPress={() => {
+                  void Linking.openURL(supportEmailUrl);
+                }}
+              />
+            ) : null}
+          </ProfileSection>
+        </View>
 
         <View style={{ marginTop: 16 }}>
           <Pressable onPress={() => logout.mutate()}>

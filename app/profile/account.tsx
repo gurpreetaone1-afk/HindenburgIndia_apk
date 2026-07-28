@@ -5,12 +5,27 @@ import { router } from "expo-router";
 import { Screen } from "@shared/components/Screen";
 import { Header } from "@shared/components/Header";
 import { Avatar } from "@shared/ui/Avatar";
+import { Badge } from "@shared/ui/Badge";
 import { Text } from "@shared/ui/Text";
 import { Input } from "@shared/ui/Input";
 import { GradientButton } from "@shared/ui/GradientButton";
 import { colors, radii, spacing } from "@shared/theme";
 import { useAuthStore } from "@features/auth/store/auth.store";
 import { useUpdateProfile } from "@features/auth/hooks/useAuth";
+import {
+  isEmailVerificationEnabled,
+  useEmailVerificationStatus,
+} from "@features/auth/hooks/useEmailVerification";
+import { ActionField, ReadOnlyField } from "@features/profile/components/AccountFields";
+import { useBankCapacity } from "@features/wallet/hooks/useBankAccounts";
+import type { KycStatus } from "@features/auth/types/user.types";
+
+const KYC_TONE: Record<KycStatus, "neutral" | "buy" | "warn" | "sell" | "info"> = {
+  PENDING: "warn",
+  SUBMITTED: "info",
+  APPROVED: "buy",
+  REJECTED: "sell",
+};
 
 // Email + mobile aren't editable via the public backend contract
 // (`PUT /user/users/me` only accepts `full_name`, `photo_url`, `communication`,
@@ -18,11 +33,17 @@ import { useUpdateProfile } from "@features/auth/hooks/useAuth";
 export default function AccountDetails() {
   const user = useAuthStore((s) => s.user);
   const update = useUpdateProfile();
+  const { used, max } = useBankCapacity();
+  const emailFlow = isEmailVerificationEnabled();
+  const emailStatus = useEmailVerificationStatus();
 
   const [fullName, setFullName] = useState(user?.full_name ?? "");
 
   const trimmed = fullName.trim();
   const dirty = trimmed.length >= 2 && trimmed !== user?.full_name;
+
+  const kyc: KycStatus = user?.kyc_status ?? "PENDING";
+  const emailVerified = !!(emailStatus.data?.verified ?? user?.email_verified);
 
   function save() {
     if (!dirty) return;
@@ -65,15 +86,42 @@ export default function AccountDetails() {
               maxLength={128}
             />
 
-            <ReadOnlyField label="Email" value={user?.email ?? "—"} icon="mail-outline" />
+            {emailFlow ? (
+              <ActionField
+                label="Email"
+                value={user?.email ?? "—"}
+                icon="mail-outline"
+                hint={emailVerified ? undefined : "Tap to verify this address"}
+                right={
+                  <Badge
+                    label={emailVerified ? "VERIFIED" : "VERIFY"}
+                    tone={emailVerified ? "buy" : "warn"}
+                  />
+                }
+                onPress={() => router.push("/profile/verify-email")}
+              />
+            ) : (
+              <ReadOnlyField label="Email" value={user?.email ?? "—"} icon="mail-outline" />
+            )}
+
             <ReadOnlyField label="Mobile" value={user?.mobile ?? "—"} icon="call-outline" />
             {user?.pan ? (
               <ReadOnlyField label="PAN" value={user.pan} icon="card-outline" />
             ) : null}
-            <ReadOnlyField
+
+            {/* KYC is the entry point into the bank-details flow: the first
+                account is captured here, and every later edit is OTP-gated. */}
+            <ActionField
               label="KYC status"
-              value={user?.kyc_status ?? "PENDING"}
+              value={kyc}
               icon="shield-checkmark-outline"
+              hint={
+                used === 0
+                  ? "Add your bank details to complete KYC"
+                  : `${used} of ${max} bank accounts saved · tap to manage`
+              }
+              right={<Badge label={kyc} tone={KYC_TONE[kyc]} />}
+              onPress={() => router.push("/kyc/bank")}
             />
 
             <Pressable onPress={() => router.push("/profile/change-password")}>
@@ -122,40 +170,5 @@ export default function AccountDetails() {
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
-  );
-}
-
-function ReadOnlyField({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon: keyof typeof Ionicons.glyphMap;
-}) {
-  return (
-    <View>
-      <Text tone="muted" size="sm" style={{ marginLeft: 4, marginBottom: 4 }}>
-        {label}
-      </Text>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: colors.bgElevated,
-          borderRadius: radii.md,
-          borderWidth: 1,
-          borderColor: colors.border,
-          paddingHorizontal: spacing.md,
-          paddingVertical: 14,
-          opacity: 0.85,
-        }}
-      >
-        <Ionicons name={icon} size={16} color={colors.textMuted} style={{ marginRight: 10 }} />
-        <Text style={{ flex: 1, fontSize: 15 }}>{value}</Text>
-        <Ionicons name="lock-closed" size={12} color={colors.textDim} />
-      </View>
-    </View>
   );
 }
