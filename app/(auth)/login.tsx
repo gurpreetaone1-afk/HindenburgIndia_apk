@@ -11,14 +11,25 @@ export default function LoginScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
       >
+        {/* Top-anchored + scrollable (NOT justifyContent:"center"). Centering
+            the content stopped the ScrollView from scrolling the focused field
+            up when the keyboard opened, so the Password box hid behind the
+            keyboard. Same pattern as the (working) Withdraw/Deposit screens:
+            padding + a generous paddingBottom so the focused input always
+            scrolls clear of the keyboard. */}
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            justifyContent: "center",
-            paddingVertical: 24,
+            paddingTop: 40,
+            // Generous bottom padding (same approach as the register screen) so
+            // the Password field + Sign-in button always scroll clear of the
+            // keyboard — the ScrollView overflow-scrolls above the resized host.
+            paddingBottom: 220,
           }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           <AuthHero title="Welcome back" subtitle="Sign in to continue trading" />
