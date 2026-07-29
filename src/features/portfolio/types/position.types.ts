@@ -27,6 +27,9 @@ export interface Position {
   realized_pnl: string;
   unrealized_pnl: string;
   margin_used: string;
+  // Overnight (NRML) margin the backend stamps per row — used to derive the
+  // "CF Required" carry-forward tile (holding_margin − margin_used on MIS).
+  holding_margin?: string;
   charges?: string;
   currency_quote?: CurrencyQuote;
   open_usd_inr_rate?: string | null;

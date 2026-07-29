@@ -216,13 +216,20 @@ export function useLiveWalletKpi(): LiveWalletKpi {
       const isMIS = (p.product_type || "").toUpperCase() === "MIS";
       if (!isMIS) continue;
       const used = Number(p.margin_used) || 0;
-      const holding = Number((p as any).holding_margin);
-      if (Number.isFinite(holding) && holding > 0) {
-        // Backend-stamped overnight margin — use it directly.
-        total += Math.max(0, holding - used);
+      const holding = Number(p.holding_margin);
+      // A real overnight (holding) margin for an MIS leg is ALWAYS greater
+      // than the intraday margin — carry-forward costs more, never less. So
+      // trust the stamped `holding_margin` ONLY when it actually exceeds
+      // `used`. A value that equals (or is below) used is the backend's
+      // degraded fallback (overnight resolver empty/errored → it stamps
+      // holding == margin_used), which made "CF Required" read 0.00 for every
+      // MIS position. Treat that as "no usable overnight number" and fall
+      // back to the 0.4× heuristic so the tile shows a sane non-zero estimate
+      // — this also makes CF correct on-device even before the backend that
+      // stamps a proper holding_margin is redeployed.
+      if (Number.isFinite(holding) && holding > used) {
+        total += holding - used;
       } else {
-        // Fall back to the old 0.4× heuristic ONLY if the API didn't
-        // stamp holding_margin yet (older backend). Better than zero.
         total += used * 0.4;
       }
     }
