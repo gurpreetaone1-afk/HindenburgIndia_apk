@@ -20,7 +20,6 @@ export function SettingsScreen() {
   const bioEnabled = usePinStore((s) => s.biometricEnabled);
   const hasPin = usePinStore((s) => s.hasPin);
   const setBio = usePinStore((s) => s.setBiometricEnabled);
-  const clearPin = usePinStore((s) => s.clearPin);
   const { supported, prompt } = useBiometric();
   const pushToast = useUiStore((s) => s.pushToast);
   const themeMode = useThemeStore((s) => s.mode);
@@ -58,31 +57,18 @@ export function SettingsScreen() {
     });
   }
 
-  // PIN-lock toggle. When OFF and user flips ON → route to /pin-set so
-  // they set a 4-digit PIN; the screen flips hasPin=true on save and
-  // the toggle reflects on return. When ON and user flips OFF → confirm
-  // dialog → clearPin() wipes secure-store + auto-disables biometric.
+  // PIN lock is COMPULSORY — it can be set / changed but never turned off.
+  // Flipping ON (no PIN yet, e.g. mid-setup) routes to /pin-set; attempting to
+  // flip OFF is refused with a clear message.
   function togglePin(next: boolean) {
     if (next) {
-      // No PIN yet — open setup flow.
-      router.push("/(auth)/pin-set");
+      router.push("/(auth)/pin-set?mandatory=1");
       return;
     }
-    Alert.alert(
-      "Remove PIN?",
-      "Turning off the PIN will also disable biometric login. You'll go straight to the app on launch.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            await clearPin();
-            pushToast({ kind: "success", message: "PIN lock disabled" });
-          },
-        },
-      ],
-    );
+    pushToast({
+      kind: "warn",
+      message: "PIN lock is required and can't be turned off.",
+    });
   }
 
   function confirmLogout() {
@@ -118,14 +104,13 @@ export function SettingsScreen() {
           value={THEME_LABEL[themeMode]}
           onPress={() => router.push("/settings/theme")}
         />
-        {/* PIN-lock master toggle. OFF by default — flipping ON routes
-            to /pin-set; flipping OFF wipes the PIN + biometric. Replaces
-            the previous "Change PIN" row that just routed to setup with
-            no way to disable. */}
+        {/* PIN-lock — COMPULSORY. Always on once set; the toggle can't be
+            turned off (togglePin refuses with a message). "Change PIN" below
+            lets the user pick a new PIN. */}
         <SettingRow
           icon="lock-closed-outline"
           title="PIN lock"
-          subtitle={hasPin ? "4-digit PIN required on launch" : "App opens directly"}
+          subtitle="Required — 4-digit PIN on every launch"
           right={
             <Toggle
               value={hasPin}

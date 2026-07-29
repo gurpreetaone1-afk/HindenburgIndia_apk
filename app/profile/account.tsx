@@ -42,7 +42,20 @@ export default function AccountDetails() {
   const trimmed = fullName.trim();
   const dirty = trimmed.length >= 2 && trimmed !== user?.full_name;
 
-  const kyc: KycStatus = user?.kyc_status ?? "PENDING";
+  // KYC display policy: on this platform, adding a bank account completes KYC
+  // (the bank-details flow IS the KYC step). So once the user has at least one
+  // saved bank account we show KYC as COMPLETE, regardless of the raw backend
+  // status. A backend-APPROVED status also counts as complete.
+  const kycRaw: KycStatus = user?.kyc_status ?? "PENDING";
+  const kycComplete = used > 0 || kycRaw === "APPROVED";
+  const kycLabel = kycComplete ? "COMPLETE" : kycRaw;
+  const kycTone: "neutral" | "buy" | "warn" | "sell" | "info" = kycComplete
+    ? "buy"
+    : KYC_TONE[kycRaw];
+  const kycHint =
+    used > 0
+      ? `${used} of ${max} bank account${used === 1 ? "" : "s"} saved · tap to manage`
+      : "Add your bank details to complete KYC";
   const emailVerified = !!(emailStatus.data?.verified ?? user?.email_verified);
 
   function save() {
@@ -113,14 +126,10 @@ export default function AccountDetails() {
                 account is captured here, and every later edit is OTP-gated. */}
             <ActionField
               label="KYC status"
-              value={kyc}
+              value={kycLabel}
               icon="shield-checkmark-outline"
-              hint={
-                used === 0
-                  ? "Add your bank details to complete KYC"
-                  : `${used} of ${max} bank accounts saved · tap to manage`
-              }
-              right={<Badge label={kyc} tone={KYC_TONE[kyc]} />}
+              hint={kycHint}
+              right={<Badge label={kycLabel} tone={kycTone} />}
               onPress={() => router.push("/kyc/bank")}
             />
 

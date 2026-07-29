@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { BackHandler, Pressable, TextInput, View } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
 import { Screen } from "@shared/components/Screen";
 import { Header } from "@shared/components/Header";
 import { Text } from "@shared/ui/Text";
@@ -10,6 +10,11 @@ import { usePinStore, PIN_LENGTH } from "@features/auth/store/pin.store";
 import { useUiStore } from "@shared/store/ui.store";
 
 export default function PinSetScreen() {
+  // `mandatory=1` = compulsory post-login setup — the user CANNOT skip it
+  // (no back button, hardware back is blocked). Without it (Settings → Change
+  // PIN) the screen behaves normally with a back button.
+  const { mandatory } = useLocalSearchParams<{ mandatory?: string }>();
+  const isMandatory = mandatory === "1";
   const [stage, setStage] = useState<"enter" | "confirm">("enter");
   const [pin, setPin] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -17,6 +22,14 @@ export default function PinSetScreen() {
   const inputRef = useRef<TextInput>(null);
   const setStoredPin = usePinStore((s) => s.setPin);
   const pushToast = useUiStore((s) => s.pushToast);
+
+  // Compulsory setup: swallow the Android hardware back so the user can't
+  // escape into the app without a PIN.
+  useEffect(() => {
+    if (!isMandatory) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => true);
+    return () => sub.remove();
+  }, [isMandatory]);
 
   const current = stage === "enter" ? pin : confirm;
   const setCurrent = stage === "enter" ? setPin : setConfirm;
@@ -55,7 +68,7 @@ export default function PinSetScreen() {
 
   return (
     <Screen>
-      <Header title="" back />
+      <Header title="" back={!isMandatory} />
       <Pressable
         onPress={() => inputRef.current?.focus()}
         style={{ flex: 1, alignItems: "center", paddingTop: 64, gap: 28 }}
@@ -65,6 +78,12 @@ export default function PinSetScreen() {
           <Text style={{ fontSize: 26, fontWeight: "700" }}>
             {stage === "enter" ? "Set up your PIN" : "Re-enter PIN"}
           </Text>
+          {isMandatory ? (
+            <Text tone="muted" size="sm" style={{ textAlign: "center", marginTop: 4 }}>
+              A PIN is required to secure your account. You can add biometric
+              unlock after this from Settings.
+            </Text>
+          ) : null}
         </View>
         <PinDots length={PIN_LENGTH} filled={current.length} cursorAt={current.length} />
         <TextInput

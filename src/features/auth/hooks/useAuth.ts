@@ -12,9 +12,9 @@ import { usePinStore } from "@features/auth/store/pin.store";
 import { ApiError } from "@core/api/errors";
 import { useUiStore } from "@shared/store/ui.store";
 
-// PIN-gate after login is currently disabled — flip this back to true (and
-// the matching flag in app/index.tsx) when the feature is re-enabled.
-const PIN_GATE_ENABLED = false;
+// PIN/biometric lock is COMPULSORY — every login goes through the lock.
+// A brand-new user is forced to set a PIN (mandatory setup); a returning user
+// must unlock with their PIN or biometric before the app opens.
 
 export function useLogin() {
   const setSession = useAuthStore((s) => s.setSession);
@@ -26,17 +26,16 @@ export function useLogin() {
       await setSession(res.user, res.access_token, res.refresh_token);
       return res.user;
     },
-    onSuccess: () => {
-      // PIN hydration is fire-and-forget — only the (currently disabled)
-      // PIN-gate branch reads it, and even there we'd rather navigate
-      // immediately than block on AsyncStorage. Saves ~30-80ms on login.
-      void usePinStore.getState().hydrate();
-      if (PIN_GATE_ENABLED) {
-        const hasPin = usePinStore.getState().hasPin;
-        router.replace(hasPin ? "/(auth)/pin-enter" : "/(auth)/pin-set");
-        return;
-      }
-      router.replace("/(tabs)");
+    onSuccess: async () => {
+      // AWAIT hydrate — a fire-and-forget read of hasPin races AsyncStorage
+      // and would mis-route a returning user (with a PIN) into fresh setup.
+      await usePinStore.getState().hydrate();
+      // Re-lock on every fresh login so a stale in-memory `unlocked` from a
+      // previous account/session can't skip the gate.
+      usePinStore.getState().setUnlocked(false);
+      const hasPin = usePinStore.getState().hasPin;
+      // No PIN yet → forced setup (mandatory=1 removes the back button).
+      router.replace(hasPin ? "/(auth)/pin-enter" : "/(auth)/pin-set?mandatory=1");
     },
     onError: (e: ApiError) => pushToast({ kind: "error", message: e.message }),
   });
@@ -61,9 +60,13 @@ export function useRegister() {
       await setSession(session.user, session.access_token, session.refresh_token);
       return session.user;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       pushToast({ kind: "success", message: "Welcome to Hindenburg" });
-      router.replace("/(tabs)");
+      // Compulsory lock: a brand-new account has no PIN → force setup.
+      await usePinStore.getState().hydrate();
+      usePinStore.getState().setUnlocked(false);
+      const hasPin = usePinStore.getState().hasPin;
+      router.replace(hasPin ? "/(auth)/pin-enter" : "/(auth)/pin-set?mandatory=1");
     },
     onError: (e: ApiError) => pushToast({ kind: "error", message: e.message }),
   });

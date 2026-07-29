@@ -5,23 +5,19 @@ import { useAuthStore } from "@features/auth/store/auth.store";
 import { usePinStore } from "@features/auth/store/pin.store";
 import { colors } from "@shared/theme";
 
-// Gate logic on app launch:
-//   - Not authenticated         → /(auth)/login
-//   - Authenticated + PIN set   → /(auth)/pin-enter (auto-prompts biometric
-//                                  if user enabled it in settings)
-//   - Authenticated + biometric → /(auth)/pin-enter (biometric-only path —
-//                                  the screen still accepts PIN if hasPin)
-//   - Otherwise                 → /(tabs)
-// Forcing a fresh PIN setup at startup is intentionally not part of this
-// flow — that screen is reachable from Settings → Change PIN when the user
-// chooses to enable the feature.
+// Gate logic on app launch — the PIN/biometric lock is COMPULSORY:
+//   - Not authenticated          → /(auth)/login
+//   - Authenticated + NO PIN     → /(auth)/pin-set?mandatory=1 (forced setup —
+//                                   e.g. a user upgrading from an older build)
+//   - Authenticated + not unlocked → /(auth)/pin-enter (auto-prompts biometric
+//                                   when the user enabled it; still accepts PIN)
+//   - Authenticated + unlocked   → /(tabs)
 export default function Splash() {
   const hydrated = useAuthStore((s) => s.hydrated);
   const isAuth = useAuthStore((s) => s.isAuthenticated);
   const hydrate = useAuthStore((s) => s.hydrate);
   const hasPin = usePinStore((s) => s.hasPin);
   const unlocked = usePinStore((s) => s.unlocked);
-  const bioEnabled = usePinStore((s) => s.biometricEnabled);
   const hydratePin = usePinStore((s) => s.hydrate);
 
   // Run hydrates exactly once on mount. Previously we ran them every time
@@ -51,12 +47,12 @@ export default function Splash() {
 
   if (!isAuth) return <Redirect href="/(auth)/login" />;
 
-  // Lock the app only when the user has actively opted in (PIN set OR
-  // biometric enabled). pin-enter.tsx auto-fires the biometric prompt on
-  // mount whenever biometricEnabled is true, so the same screen handles
-  // both lock modes.
-  const needsUnlock = (hasPin || bioEnabled) && !unlocked;
-  if (needsUnlock) return <Redirect href="/(auth)/pin-enter" />;
+  // Compulsory lock. A logged-in user with NO PIN (upgraded from an old build,
+  // or setup interrupted) is forced into mandatory setup. Otherwise the app
+  // stays locked until the user unlocks with PIN/biometric. pin-enter.tsx
+  // auto-fires the biometric prompt on mount when the user enabled it.
+  if (!hasPin) return <Redirect href="/(auth)/pin-set?mandatory=1" />;
+  if (!unlocked) return <Redirect href="/(auth)/pin-enter" />;
 
   return <Redirect href="/(tabs)" />;
 }
