@@ -94,11 +94,7 @@ function TopBarImpl({ onSearch, hasProfileBadge }: Props) {
       </Pressable>
       <View style={{ marginRight: 8 }}>
         <StackedTile
-          iconNode={
-            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text, lineHeight: 16 }}>
-              
-            </Text>
-          }
+          iconNode={<Ionicons name="wallet-outline" size={16} color={colors.text} />}
           label="Funds"
           onPress={() => router.push("/wallet")}
         />
