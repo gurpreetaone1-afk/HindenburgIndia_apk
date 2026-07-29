@@ -46,7 +46,7 @@ export function fmtIST(d: Date | string, pattern = "dd MMM yyyy, hh:mm a"): stri
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
   const map: Record<string, string> = {
     yyyy: String(ist.getUTCFullYear()),
-    MMM: MONTHS[ist.getUTCMonth()],
+    MMM: MONTHS[ist.getUTCMonth()] ?? "",
     dd: _pad(ist.getUTCDate()),
     hh: _pad(h12),
     mm: _pad(ist.getUTCMinutes()),

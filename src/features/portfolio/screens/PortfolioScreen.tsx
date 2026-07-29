@@ -38,7 +38,7 @@ import type {
 } from "@features/portfolio/types/position.types";
 import { useTickerStore } from "@features/trade/store/ticker.store";
 import { useTickerSubscription } from "@features/trade/hooks/useTickers";
-import { computeLivePnl } from "@features/portfolio/hooks/useLiveWalletKpi";
+import { computeLivePnl, safeCloseSide } from "@features/portfolio/hooks/useLiveWalletKpi";
 
 type TabKey = "position" | "active" | "closed";
 
@@ -294,13 +294,11 @@ export function PortfolioScreen() {
         if (r.status !== "OPEN") return sum + r.pnl;
         const tok = r.instrument_token ? String(r.instrument_token) : "";
         const tk: any = tok ? allTicks[tok] : undefined;
-        const lltp = tk?.ltp ?? null;
-        // Close-side mark: bid for a long, ask for a short.
-        const bid = Number.isFinite(tk?.bid) && tk.bid > 0 ? tk.bid : lltp;
-        const ask = Number.isFinite(tk?.ask) && tk.ask > 0 ? tk.ask : lltp;
+        // Close-side mark: bid for a long, ask for a short — junk/stale
+        // depth levels rejected in favour of LTP (see safeCloseSide).
         const live = computeLivePnl({
           serverPnl: r.pnl,
-          liveLtp: r.side === "BUY" ? bid : ask,
+          liveLtp: safeCloseSide(tk?.ltp, tk?.bid, tk?.ask, r.side),
           avg: r.entry_price,
           // Recover signed qty from side — rowsForTab carries abs qty.
           qty: r.side === "BUY" ? r.quantity : -r.quantity,
@@ -805,21 +803,14 @@ function LivePositionRow({
     if (row.status !== "OPEN") return row;
     const liveLtp = tick?.ltp;
     if (liveLtp == null || !Number.isFinite(liveLtp)) return row;
-    // Card column is labelled "BID" for BUY and "ASK" for SELL — that's
-    // the price the user would actually close at right now. Previously
-    // we showed `tick.ltp` under the BID label which (a) was technically
-    // wrong and (b) didn't tick when only the bid/ask side of the
-    // book moved (common in slow scalping windows — the user reported
-    // "BID move nahi ho raha"). Now we use the side-correct price from
-    // the live feed, falling back to LTP only when the depth side is
-    // missing.
-    const liveBid = Number.isFinite(tick?.bid) && (tick?.bid as number) > 0
-      ? (tick!.bid as number)
-      : liveLtp;
-    const liveAsk = Number.isFinite(tick?.ask) && (tick?.ask as number) > 0
-      ? (tick!.ask as number)
-      : liveLtp;
-    const closeSide = row.side === "BUY" ? liveBid : liveAsk;
+    // Card column is labelled "BID" for BUY and "ASK" for SELL — the price
+    // the user would actually close at. We use the side-correct depth price
+    // BUT reject a stale / junk best level (illiquid + expired options
+    // carry them) via safeCloseSide, falling back to LTP. That kills the
+    // "pnl 18 → 1800 flicker, ltp switch ho raha" bug AND keeps the shown
+    // price tracking the fast-moving last trade instead of a frozen depth
+    // level.
+    const closeSide = safeCloseSide(liveLtp, tick?.bid, tick?.ask, row.side) ?? liveLtp;
     // P&L is the realised value if the user squared off right now —
     // which means using the close-side price, not the last trade.
     const displayPnl = computeLivePnl({

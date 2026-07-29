@@ -63,6 +63,43 @@ export function computeLivePnl(args: {
   return derived;
 }
 
+/**
+ * Pick the close-side price (bid for a long, ask for a short) but REJECT a
+ * depth level that's obviously out of scale with the last trade.
+ *
+ * Illiquid / expired option depth books routinely carry a STALE or junk
+ * best level whose price sits far from the live LTP. Using it made the
+ * position card's P&L jump between e.g. +18 and +1800 tick-to-tick — the
+ * "pnl ek sec me 18 fir 1800 ho jata hai, ltp switch ho raha hai" bug.
+ * The card also showed that rarely-refreshed depth price under the LTP
+ * label, so the price looked frozen even while the last-trade LTP was
+ * ticking fast.
+ *
+ * Guard: only trust bid/ask when it's within 25% of LTP. A real bid/ask
+ * spread is never a quarter of the price, so 25% comfortably rejects a
+ * junk/stale level (the ×100 flicker is ~9900% off) while never touching
+ * a legitimate quote. On rejection we fall back to LTP, which both
+ * stabilises the P&L and lets the displayed price track the fast-moving
+ * last trade.
+ */
+export function safeCloseSide(
+  ltp: number | null | undefined,
+  bid: number | null | undefined,
+  ask: number | null | undefined,
+  side: "BUY" | "SELL",
+): number | null {
+  const l = Number(ltp);
+  const raw = Number(side === "BUY" ? bid : ask);
+  const rawOk = Number.isFinite(raw) && raw > 0;
+  if (!Number.isFinite(l) || l <= 0) {
+    // No usable LTP — the depth side is all we have.
+    return rawOk ? raw : null;
+  }
+  if (!rawOk) return l;
+  // Reject a depth price more than 25% away from LTP — stale / junk level.
+  return Math.abs(raw - l) / l > 0.25 ? l : raw;
+}
+
 export interface LiveWalletKpi {
   ledger: number;
   available: number;
@@ -132,13 +169,12 @@ export function useLiveWalletKpi(): LiveWalletKpi {
       // M2M moves on every WS push instead of waiting on the 3 s poll.
       const tok = p.instrument_token ? String(p.instrument_token) : "";
       const tk: any = tok ? ticks[tok] : undefined;
-      const lltp = tk?.ltp ?? null;
       const qn = Number(p.quantity);
       // Mark against the CLOSE-side price (bid for a long, ask for a short)
-      // — what the user would actually realise — not the last trade.
-      const bid = Number.isFinite(tk?.bid) && tk.bid > 0 ? tk.bid : lltp;
-      const ask = Number.isFinite(tk?.ask) && tk.ask > 0 ? tk.ask : lltp;
-      const closeSide = qn >= 0 ? bid : ask;
+      // — what the user would actually realise — not the last trade. A
+      // junk/stale depth level is rejected in favour of LTP (see
+      // safeCloseSide) so M2M can't flicker ×100.
+      const closeSide = safeCloseSide(tk?.ltp, tk?.bid, tk?.ask, qn >= 0 ? "BUY" : "SELL");
       total += computeLivePnl({
         serverPnl: Number(p.unrealized_pnl) || 0,
         liveLtp: closeSide,
