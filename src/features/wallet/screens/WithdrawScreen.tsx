@@ -22,76 +22,48 @@ import {
   useWalletSummary,
   useWithdraw,
 } from "@features/wallet/hooks/useWallet";
-import { useAuthStore } from "@features/auth/store/auth.store";
 import type { UserBank } from "@features/wallet/types/wallet.types";
 
 const QUICK_AMOUNTS = [500, 1000, 5000, 10000, 25000];
 
-// Light UPI ID validator — `user@handle` where handle is at least 2 alphanum
-// chars. Catches the typical typos (missing @, trailing spaces) without
-// false-rejecting valid VPAs like `9876543210@paytm`.
-const UPI_RE = /^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$/;
-
-type Mode = "bank" | "upi";
-
+// Withdrawals ALWAYS go to a saved bank account (the same accounts the user
+// added during KYC / on the Bank Accounts screen). There is intentionally NO
+// free-form bank/UPI entry here — the user just picks one of their linked
+// accounts, and "Add new" opens the same bank-add flow used in KYC.
 export default function WithdrawScreen() {
   const pushToast = useUiStore((s) => s.pushToast);
   const banks = useMyBankAccounts();
   const summary = useWalletSummary();
   const withdraw = useWithdraw();
-  const user = useAuthStore((s) => s.user);
 
-  const [mode, setMode] = useState<Mode>("bank");
   const [amount, setAmount] = useState("");
   const [bankId, setBankId] = useState("");
   const [remarks, setRemarks] = useState("");
-  const [upiId, setUpiId] = useState("");
-  const [upiHolder, setUpiHolder] = useState(user?.full_name ?? "");
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const selected = useMemo(
     () => banks.data?.find((b) => b.id === bankId),
     [banks.data, bankId],
   );
 
+  // Default-select the user's default (or first) linked bank as soon as the
+  // list loads, so the common case needs zero taps beyond the amount.
   useEffect(() => {
-    if (mode === "bank" && !bankId && banks.data?.length) {
+    if (!bankId && banks.data?.length) {
       const def = banks.data.find((b) => b.is_default) ?? banks.data[0];
       if (def) setBankId(def.id);
     }
-  }, [banks.data, bankId, mode]);
-
-  useEffect(() => {
-    if (!upiHolder && user?.full_name) setUpiHolder(user.full_name);
-  }, [user?.full_name, upiHolder]);
+  }, [banks.data, bankId]);
 
   async function submit() {
-    const errs: Record<string, string> = {};
     const n = Number(amount);
     if (!n || n <= 0) {
       pushToast({ kind: "error", message: "Amount required" });
       return;
     }
-
-    if (mode === "bank") {
-      if (!selected) {
-        pushToast({ kind: "error", message: "Select a bank account" });
-        return;
-      }
-    } else {
-      // UPI mode validation
-      if (!upiId.trim() || !UPI_RE.test(upiId.trim())) {
-        errs.upi_id = "Enter a valid UPI ID (e.g. name@paytm)";
-      }
-      if (!upiHolder.trim()) {
-        errs.upi_holder = "Holder name required";
-      }
-      if (Object.keys(errs).length > 0) {
-        setErrors(errs);
-        return;
-      }
+    if (!selected) {
+      pushToast({ kind: "error", message: "Select a bank account" });
+      return;
     }
-    setErrors({});
 
     const avail = Number(summary.data?.available_balance ?? 0);
     if (avail > 0 && n > avail) {
@@ -102,35 +74,15 @@ export default function WithdrawScreen() {
     }
 
     try {
-      // Backend WithdrawalCreate contract: `bank` is a dict mapped server-side
-      // to BankSnapshot{name, account_number, ifsc, holder, branch?,
-      // account_type?}. We reuse those slots for UPI so no backend schema
-      // change is needed and admin sees a clear "UPI · <vpa>" snapshot:
-      //   bank.name           = "UPI · <vpa>" (admin-readable label)
-      //   bank.account_number = the UPI VPA itself (so admin can copy/paste)
-      //   bank.ifsc           = "UPI"   (sentinel — distinguishes from bank)
-      //   bank.holder         = holder name (user.full_name by default)
-      //   bank.account_type   = "UPI"
-      const bankPayload =
-        mode === "bank"
-          ? {
-              name: selected!.bank_name,
-              account_number: selected!.account_number,
-              ifsc: selected!.ifsc_code,
-              holder: selected!.account_holder,
-            }
-          : {
-              name: `UPI · ${upiId.trim()}`,
-              account_number: upiId.trim(),
-              ifsc: "UPI",
-              holder: upiHolder.trim(),
-              account_type: "UPI",
-            };
-
       await withdraw.mutateAsync({
         amount: n,
         remarks: remarks || undefined,
-        bank: bankPayload,
+        bank: {
+          name: selected.bank_name,
+          account_number: selected.account_number,
+          ifsc: selected.ifsc_code,
+          holder: selected.account_holder,
+        },
       });
       pushToast({
         kind: "success",
@@ -143,8 +95,7 @@ export default function WithdrawScreen() {
   }
 
   const submitting = withdraw.isPending;
-  const canSubmit =
-    mode === "bank" ? !!selected : !!upiId.trim() && !!upiHolder.trim();
+  const canSubmit = !!selected;
 
   return (
     <Screen padded={false}>
@@ -184,7 +135,7 @@ export default function WithdrawScreen() {
               {formatINR(summary.data?.available_balance ?? 0)}
             </Text>
             <Text tone="dim" size="xs">
-              Money goes to your chosen payout method. Admin approves before
+              Payout goes to your selected bank account. Admin approves before
               payout.
             </Text>
           </View>
@@ -218,162 +169,66 @@ export default function WithdrawScreen() {
             ))}
           </View>
 
-          {/* Mode toggle: Bank | UPI */}
+          {/* Bank account picker — select one of the linked accounts. */}
           <View
             style={{
               flexDirection: "row",
-              backgroundColor: colors.bgElevated,
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: 4,
-              marginTop: spacing.sm,
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: 4,
             }}
           >
-            <ModePill
-              icon="card-outline"
-              label="Bank"
-              active={mode === "bank"}
-              onPress={() => setMode("bank")}
-            />
-            <ModePill
-              icon="phone-portrait-outline"
-              label="UPI ID"
-              active={mode === "upi"}
-              onPress={() => setMode("upi")}
-            />
+            <Text tone="muted" size="sm" style={{ marginLeft: 4 }}>
+              Bank account
+            </Text>
+            <Pressable
+              onPress={() => router.push("/wallet/add-bank")}
+              hitSlop={6}
+              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+            >
+              <Ionicons name="add-circle-outline" size={14} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "600" }}>
+                Add new
+              </Text>
+            </Pressable>
           </View>
 
-          {mode === "bank" ? (
-            <>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginTop: 4,
-                }}
-              >
-                <Text tone="muted" size="sm" style={{ marginLeft: 4 }}>
-                  Bank account
+          {banks.isLoading ? (
+            <View style={{ paddingVertical: spacing.lg, alignItems: "center" }}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : (banks.data?.length ?? 0) === 0 ? (
+            <View
+              style={{
+                borderWidth: 1,
+                borderStyle: "dashed",
+                borderColor: colors.border,
+                borderRadius: radii.lg,
+                padding: spacing.md,
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Ionicons name="card-outline" size={26} color={colors.textMuted} />
+              <Text tone="muted" size="sm" style={{ textAlign: "center" }}>
+                No bank accounts linked yet
+              </Text>
+              <Pressable onPress={() => router.push("/wallet/add-bank")} hitSlop={8}>
+                <Text style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}>
+                  + Add a bank account
                 </Text>
-                <Pressable
-                  onPress={() => router.push("/wallet/add-bank")}
-                  hitSlop={6}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
-                >
-                  <Ionicons
-                    name="add-circle-outline"
-                    size={14}
-                    color={colors.primary}
-                  />
-                  <Text
-                    style={{
-                      color: colors.primary,
-                      fontSize: 12,
-                      fontWeight: "600",
-                    }}
-                  >
-                    Add new
-                  </Text>
-                </Pressable>
-              </View>
-
-              {banks.isLoading ? (
-                <View
-                  style={{ paddingVertical: spacing.lg, alignItems: "center" }}
-                >
-                  <ActivityIndicator color={colors.primary} />
-                </View>
-              ) : (banks.data?.length ?? 0) === 0 ? (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderStyle: "dashed",
-                    borderColor: colors.border,
-                    borderRadius: radii.lg,
-                    padding: spacing.md,
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Ionicons
-                    name="card-outline"
-                    size={26}
-                    color={colors.textMuted}
-                  />
-                  <Text tone="muted" size="sm" style={{ textAlign: "center" }}>
-                    No bank accounts linked yet
-                  </Text>
-                  <Pressable
-                    onPress={() => router.push("/wallet/add-bank")}
-                    hitSlop={8}
-                  >
-                    <Text
-                      style={{
-                        color: colors.primary,
-                        fontWeight: "600",
-                        fontSize: 13,
-                      }}
-                    >
-                      + Add a bank account
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View style={{ gap: 8 }}>
-                  {banks.data!.map((b) => (
-                    <BankRow
-                      key={b.id}
-                      bank={b}
-                      active={b.id === bankId}
-                      onPress={() => setBankId(b.id)}
-                    />
-                  ))}
-                </View>
-              )}
-            </>
+              </Pressable>
+            </View>
           ) : (
-            <View style={{ gap: spacing.md }}>
-              <Input
-                label="UPI ID"
-                value={upiId}
-                onChangeText={(v) => setUpiId(v.replace(/\s/g, ""))}
-                placeholder="yourname@paytm"
-                autoCapitalize="none"
-                error={errors.upi_id}
-                hint="e.g. 9876543210@paytm · name@oksbi · vpa@ybl"
-              />
-              <Input
-                label="Account holder name"
-                value={upiHolder}
-                onChangeText={setUpiHolder}
-                placeholder="As per UPI"
-                autoCapitalize="words"
-                error={errors.upi_holder}
-              />
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: spacing.md,
-                  borderRadius: radii.lg,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.bgElevated,
-                }}
-              >
-                <Ionicons
-                  name="information-circle-outline"
-                  size={16}
-                  color={colors.info}
+            <View style={{ gap: 8 }}>
+              {banks.data!.map((b) => (
+                <BankRow
+                  key={b.id}
+                  bank={b}
+                  active={b.id === bankId}
+                  onPress={() => setBankId(b.id)}
                 />
-                <Text tone="muted" size="xs" style={{ flex: 1 }}>
-                  Admin will transfer the approved amount to this UPI ID. Make
-                  sure it's correct — refunds for typos can take days.
-                </Text>
-              </View>
+              ))}
             </View>
           )}
 
@@ -386,9 +241,7 @@ export default function WithdrawScreen() {
 
           <View style={{ marginTop: spacing.md }}>
             <GradientButton
-              label={
-                mode === "upi" ? "Request UPI withdrawal" : "Request withdrawal"
-              }
+              label="Request withdrawal"
               loading={submitting}
               disabled={submitting || !canSubmit}
               onPress={submit}
@@ -397,49 +250,6 @@ export default function WithdrawScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
-  );
-}
-
-function ModePill({
-  icon,
-  label,
-  active,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        flex: 1,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
-        paddingVertical: 10,
-        borderRadius: 999,
-        backgroundColor: active ? colors.bgSurface : "transparent",
-      }}
-    >
-      <Ionicons
-        name={icon}
-        size={14}
-        color={active ? colors.text : colors.textMuted}
-      />
-      <Text
-        size="sm"
-        style={{
-          color: active ? colors.text : colors.textMuted,
-          fontWeight: active ? "700" : "500",
-        }}
-      >
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
