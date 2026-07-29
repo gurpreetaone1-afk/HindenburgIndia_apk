@@ -37,6 +37,11 @@
         "android.permission.USE_FINGERPRINT",
         "android.permission.INTERNET",
         "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.INTERNET",
+        "android.permission.VIBRATE",
         "android.permission.RECORD_AUDIO"
       ],
       "softwareKeyboardLayoutMode": "resize",
@@ -81,6 +86,9 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9fc2e889-1aec-4d37-86d2-7423a2b0440e"
     }
   }
 }

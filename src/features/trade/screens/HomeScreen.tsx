@@ -20,25 +20,17 @@ interface SegmentEntry {
   label: string;
 }
 
-// Per-tab top strips. Stocks shows Indian indices (Zerodha feed); Forex
-// and Crypto pull from Infoway. Tokens MUST be the raw Infoway codes the
-// backend stores on the Instrument row + publishes ticks under
-// (`market_data_service._infoway_overlay` resolves `Instrument.token == token`,
-// and the WS fanout matches the raw `infoway:tick:<symbol>` channel). The old
-// FX_* / CRYPTO_* prefixed tokens matched no instrument/tick → permanent "—".
-// Crypto is the USDT quote convention (BTCUSDT) since that's what Infoway feeds.
+// Per-tab top strips. Stocks shows Indian indices (Zerodha feed); Crypto uses
+// the FREE Binance public feed (BINANCE_CRYPTO_FEED on the backend). Tokens
+// MUST be the raw codes the backend publishes ticks under — for crypto that's
+// the USDT-pair convention (BTCUSDT). Old FX_* / CRYPTO_* prefixed tokens
+// matched no tick → permanent "—", so we use the raw symbol. (Forex tab was
+// removed — it needs a paid feed.)
 const SEGMENT_TOKENS: Record<SegmentTab, SegmentEntry[]> = {
   Stocks: [
     { token: "256265", label: "NIFTY 50" },
     { token: "260105", label: "NIFTY BANK" },
     { token: "260617", label: "NIFTY 100" },
-  ],
-  Forex: [
-    { token: "EURUSD", label: "EUR / USD" },
-    { token: "GBPUSD", label: "GBP / USD" },
-    { token: "USDJPY", label: "USD / JPY" },
-    { token: "USDINR", label: "USD / INR" },
-    { token: "AUDUSD", label: "AUD / USD" },
   ],
   Crypto: [
     { token: "BTCUSDT", label: "BTC / USD" },
