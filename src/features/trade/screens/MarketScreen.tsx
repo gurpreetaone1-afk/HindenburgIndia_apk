@@ -493,6 +493,11 @@ function ManagedSegmentList({
     queryFn: () => MarketwatchAPI.segmentItems(bucket.adminRow!),
     enabled: !!bucket.adminRow,
     staleTime: 30_000,
+    // Force a fresh fetch on every mount (overrides the global
+    // refetchOnMount:false). Without this a segment that was empty once
+    // stayed empty until the 30s stale window elapsed WHILE mounted — with
+    // the persister that meant permanently empty across launches.
+    refetchOnMount: "always",
     placeholderData: (prev) => prev,
   });
   const search = useInstrumentSearch({

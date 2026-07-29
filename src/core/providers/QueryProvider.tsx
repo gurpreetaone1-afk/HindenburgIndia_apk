@@ -35,15 +35,32 @@ export function QueryProvider({ children }: Props) {
       persistOptions={{
         persister,
         maxAge: 24 * 60 * 60 * 1000, // 24 h
-        buster: "v1",
-        // Don't persist mutations or queries that are quickly stale on
-        // their own — ticker payloads come over WS, no point caching to
-        // disk. Same for one-shot endpoints like `/me`.
+        // Bumped v1 → v2 to DISCARD the old on-disk cache once. Builds that ran
+        // during the market-closed/timezone bug persisted empty instrument /
+        // segment lists ([]), and with the global `refetchOnMount: false` those
+        // empties were re-served for 24h — the Market page (search + every
+        // segment) stayed permanently empty even though the backend had the
+        // instruments. Busting clears that stale state on first launch.
+        buster: "v2",
+        // NEVER persist volatile market data. Ticks come over WS; instrument
+        // SEARCH results + curated SEGMENT lists + watchlist quotes depend on
+        // the live catalog and admin blocks, so a cached `[]` must never be
+        // re-served from disk — that was the root cause of the empty Market
+        // page. These always fetch fresh from the network.
         dehydrateOptions: {
           shouldDehydrateQuery: (q) => {
             const key0 = q.queryKey[0];
-            if (key0 === "ticker" || key0 === "ticker-batch") return false;
-            if (key0 === "marketdata-snapshot") return false;
+            if (
+              key0 === "ticker" ||
+              key0 === "ticker-batch" ||
+              key0 === "marketdata-snapshot" ||
+              key0 === "instruments" ||
+              key0 === "segment-items" ||
+              key0 === "marketwatch" ||
+              key0 === "watchlist-quotes"
+            ) {
+              return false;
+            }
             return q.state.status === "success";
           },
         },
