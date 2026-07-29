@@ -13,6 +13,7 @@ import { useLogout } from "@features/auth/hooks/useAuth";
 import { useWallet } from "@features/wallet/hooks/useWallet";
 import { QuickTile } from "@features/profile/components/QuickTile";
 import { ProfileSection } from "@features/profile/components/ProfileSection";
+import { ApiAccessRow } from "@features/profile/components/ApiAccessRow";
 import {
   buildMailtoUrl,
   buildWhatsappUrl,
@@ -135,6 +136,7 @@ export function ProfileScreen() {
               divider
               onPress={() => router.push("/profile/account")}
             />
+            <ApiAccessRow />
             <Row
               icon="lock-closed-outline"
               title="Change password"
