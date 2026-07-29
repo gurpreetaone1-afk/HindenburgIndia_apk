@@ -9,17 +9,19 @@
 // entirely: tap outside trading hours → single red toast, no optimistic
 // mutation, no audio cue.
 
-/** Minutes since IST midnight for the given JS Date. */
+/** Minutes since IST midnight for the given JS Date.
+ *
+ * IMPORTANT: compute IST by manually shifting UTC by +5:30 and reading the
+ * UTC clock — do NOT use `Intl.DateTimeFormat({ timeZone: "Asia/Kolkata" })`.
+ * React Native's Hermes engine ships WITHOUT full ICU/timezone data in release
+ * builds, so a named-timezone Intl format silently falls back to UTC. That made
+ * `_istMinutes` return UTC time (IST − 5:30) → e.g. 12:37 IST read as 07:07 →
+ * before the 09:15 open → the whole app showed "market closed" during live
+ * hours (web worked because browsers have full ICU). This manual offset is
+ * engine-independent and always correct. Mirrors `_istDay` below. */
 function _istMinutes(date: Date): number {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kolkata",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
-  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-  const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-  return h * 60 + m;
+  const ist = new Date(date.getTime() + (5 * 60 + 30) * 60_000);
+  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
 }
 
 /** IST day-of-week (0 = Sun, 6 = Sat). */
