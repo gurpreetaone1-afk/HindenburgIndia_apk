@@ -682,6 +682,10 @@ export const TradeSheet = forwardRef<TradeSheetRef, TradeSheetProps>(({ initialA
       // position row on the Portfolio tab so the user sees the right
       // symbol immediately, before the WS push replaces the row.
       _displaySymbol: symbol ?? target.symbol,
+      // Resolved lot size so the optimistic row seeds quantity in
+      // contracts (lots × lot_size) → P&L is right instantly, no ×lot_size
+      // jump when the real row lands.
+      _lotSize: lotSizeForConv,
     });
   }
 

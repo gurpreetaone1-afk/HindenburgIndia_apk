@@ -16,6 +16,14 @@ import { freezePositionPollersForPlace } from "@features/portfolio/hooks/usePosi
 interface PlaceOrderInputWithHints extends PlaceOrderInput {
   _displaySymbol?: string;
   _exchange?: string;
+  // Resolved lot size for this instrument (GOLD=100, NIFTY=65, …). Passed
+  // by the call-site so the optimistic position/active-trade rows seed
+  // `quantity` in CONTRACTS (lots × lot_size), matching what the server
+  // returns. Without it the placeholder used raw lots (=1) → the card
+  // showed 1/lot_size of the real P&L for ~1-2 s, then jumped ×lot_size
+  // when the real row landed ("20 fir achanak 2000" bug). Defaults to 1
+  // (correct for forex/crypto where lots ARE the contract count).
+  _lotSize?: number;
 }
 
 interface OptimisticCtx {
@@ -89,11 +97,14 @@ function makeOptimisticPosition(
   const tick = useTickerStore.getState().ticks[body.token];
   const ltp = tick?.ltp ?? 0;
   const direction = body.action === "BUY" ? 1 : -1;
-  // For Infoway / forex / metals the qty is `lots` directly (fractional
-  // contracts). For Indian equity / index futures the real position will
-  // arrive in < 1 s with the correct lot-size-multiplied qty, so this
-  // placeholder doesn't have to be exact.
-  const qty = body.lots * direction;
+  // Seed `quantity` in CONTRACTS = lots × lot_size, exactly as the server
+  // stores it. lot_size comes from the call-site hint (GOLD=100, NIFTY=65,
+  // forex/crypto=1). Using raw lots here made a 1-lot GOLD show quantity 1
+  // → the live P&L recompute ((ltp−avg) × qty) was 1/100 of the real value
+  // for the ~1-2 s until the real row landed, then jumped ×100 ("20 fir
+  // achanak 2000"). Carrying lot_size too keeps posToRow's lots pill right.
+  const lotSize = Number(body._lotSize) > 0 ? Number(body._lotSize) : 1;
+  const qty = body.lots * lotSize * direction;
   const now = new Date().toISOString();
 
   return {
@@ -105,6 +116,7 @@ function makeOptimisticPosition(
     product_type: body.product_type,
     quantity: qty,
     lots: body.lots,
+    lot_size: lotSize,
     avg_price: String(ltp),
     ltp: String(ltp),
     realized_pnl: "0",
@@ -126,6 +138,10 @@ function makeOptimisticActiveTrade(
   const tick = useTickerStore.getState().ticks[body.token];
   const ltp = tick?.ltp ?? 0;
   const now = new Date().toISOString();
+  // Same CONTRACTS-not-lots seed as the position row — the Active tab's
+  // live P&L recompute is qty-scaled too, so a raw-lots quantity showed
+  // 1/lot_size of the real P&L until the WS row replaced it.
+  const lotSize = Number(body._lotSize) > 0 ? Number(body._lotSize) : 1;
   return {
     id: tempId,
     trade_number: tempId,
@@ -137,9 +153,9 @@ function makeOptimisticActiveTrade(
     action: body.action,
     side: body.action,
     product_type: body.product_type,
-    quantity: body.lots,
+    quantity: body.lots * lotSize,
     lots: body.lots,
-    lot_size: 1,
+    lot_size: lotSize,
     price: String(ltp),
     ltp: String(ltp),
     pnl: "0",

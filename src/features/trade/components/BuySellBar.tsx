@@ -20,6 +20,10 @@ interface Props {
   minLots?: number;
   /** Drives price precision — forex/crypto get magnitude-aware decimals. */
   segment?: string;
+  /** Resolved lot size (contracts per lot). Passed to the optimistic
+   *  position so its quantity seeds in contracts and the P&L is right
+   *  instantly — no ×lot_size jump when the real row lands. */
+  lotSize?: number;
 }
 
 const STEP_BLUE = "#2962FF";
@@ -117,6 +121,7 @@ function BuySellBarImpl({
   step = 0.01,
   minLots = 0.01,
   segment,
+  lotSize,
 }: Props) {
   const tick = useTicker(token ?? null);
   const live = token ? tick : undefined;
@@ -170,6 +175,7 @@ function BuySellBarImpl({
       // properly-labelled optimistic Position row so the Portfolio tab
       // shows the new trade with the real symbol (not the raw token).
       _displaySymbol: symbol,
+      _lotSize: lotSize,
     });
   }
 

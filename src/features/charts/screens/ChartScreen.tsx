@@ -258,6 +258,7 @@ export function ChartScreen() {
         minLots={pickMinLot(effective.data)}
         step={pickMinLot(effective.data) >= 1 ? 1 : pickMinLot(effective.data)}
         segment={segmentTags.segment}
+        lotSize={Number(effective.data?.lot_size) || 1}
       />
 
       <ChartInfoBar
