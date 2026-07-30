@@ -1,10 +1,10 @@
-import { Linking, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, shadows } from "@shared/theme";
 import { useAuthStore } from "@features/auth/store/auth.store";
-import { buildWhatsappUrl, useSupportContacts } from "@features/support/useSupport";
+import { openWhatsappChat, useSupportContacts } from "@features/support/useSupport";
 
 // WhatsApp brand green so the bubble reads instantly as "chat on WhatsApp".
 const WA_GREEN = "#25D366";
@@ -43,18 +43,15 @@ export function SupportFab() {
   const onTabRoute = TAB_ROUTES.includes(pathname);
   const bottom = insets.bottom + (onTabRoute ? 66 : 24);
 
-  const waUrl = buildWhatsappUrl(
-    support?.whatsapp,
-    "Hi, I need help with my Hindenburg account",
-  );
-
-  function onPress() {
-    if (waUrl) {
-      void Linking.openURL(waUrl);
-    } else {
-      // No admin WhatsApp number configured yet — open the in-app chat.
-      router.push("/support");
-    }
+  async function onPress() {
+    // Try to open WhatsApp directly to the admin's number (native deep link
+    // first, wa.me fallback). Only drop to the in-app chat when there's no
+    // usable number OR neither URL could launch.
+    const opened = await openWhatsappChat(
+      support?.whatsapp,
+      "Hi, I need help with my Hindenburg account",
+    );
+    if (!opened) router.push("/support");
   }
 
   return (

@@ -1,3 +1,4 @@
+import { Linking } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@core/api/client";
 import { unwrap } from "@core/api/errors";
@@ -40,6 +41,42 @@ export function buildWhatsappUrl(raw: string | undefined | null, prefill?: strin
   if (digits.length < 8) return null; // shorter than the shortest country dial
   const text = prefill ? `?text=${encodeURIComponent(prefill)}` : "";
   return `https://wa.me/${digits}${text}`;
+}
+
+/**
+ * Open a WhatsApp chat to an admin-stored number, preferring the native app
+ * and falling back to the wa.me web link. Returns true if some URL launched,
+ * false if the number was unusable or nothing could open it (caller then
+ * routes to the in-app chat).
+ *
+ * Why a chain and not a single `Linking.openURL(wa.me)`: on Android the
+ * plain `https://wa.me/…` link frequently bounced to the browser (or did
+ * nothing when the app-link handler wasn't verified), which read as "WhatsApp
+ * icon kuch nahi karta". We try the `whatsapp://send` deep link FIRST — it
+ * opens the installed app directly — then fall back to wa.me. We deliberately
+ * DON'T gate on `Linking.canOpenURL`: on Android 11+ it returns false without
+ * a `<queries>` manifest entry even when WhatsApp is installed, so we just
+ * attempt `openURL` and catch.
+ */
+export async function openWhatsappChat(
+  raw: string | undefined | null,
+  prefill?: string,
+): Promise<boolean> {
+  if (!raw) return false;
+  const digits = String(raw).replace(/[^0-9]/g, "");
+  if (digits.length < 8) return false;
+  const text = prefill ? encodeURIComponent(prefill) : "";
+  const appUrl = `whatsapp://send?phone=${digits}${text ? `&text=${text}` : ""}`;
+  const webUrl = `https://wa.me/${digits}${text ? `?text=${text}` : ""}`;
+  for (const url of [appUrl, webUrl]) {
+    try {
+      await Linking.openURL(url);
+      return true;
+    } catch {
+      // try the next candidate
+    }
+  }
+  return false;
 }
 
 /** Builds a mailto: URL with optional subject + body. Returns null when
