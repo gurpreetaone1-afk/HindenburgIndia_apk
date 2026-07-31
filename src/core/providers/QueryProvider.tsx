@@ -41,7 +41,7 @@ export function QueryProvider({ children }: Props) {
         // empties were re-served for 24h — the Market page (search + every
         // segment) stayed permanently empty even though the backend had the
         // instruments. Busting clears that stale state on first launch.
-        buster: "v2",
+        buster: "v3",
         // NEVER persist volatile market data. Ticks come over WS; instrument
         // SEARCH results + curated SEGMENT lists + watchlist quotes depend on
         // the live catalog and admin blocks, so a cached `[]` must never be
@@ -57,7 +57,12 @@ export function QueryProvider({ children }: Props) {
               key0 === "instruments" ||
               key0 === "segment-items" ||
               key0 === "marketwatch" ||
-              key0 === "watchlist-quotes"
+              key0 === "watchlist-quotes" ||
+              // Never persist the admin inactive-segment list — a stale copy
+              // kept hiding the INDICES/STOCKS/COMMODITIES/FOREX chips after
+              // those segments were activated. It's tiny + refetches fast, so
+              // always pull it fresh instead of serving a persisted value.
+              key0 === "segment-settings"
             ) {
               return false;
             }
