@@ -157,9 +157,12 @@ function IntradayChartCardImpl({
       </View>
 
       <View style={{ marginTop: 4 }}>
-        {data.length >= 2 ? (
+        {/* After market close the feed stops and only the last snapshot LTP
+            remains (1 point) — pad it to a flat line so the chart holds at LTP
+            instead of going blank. */}
+        {data.length >= 1 ? (
           <IntradayLineChart
-            data={data}
+            data={data.length === 1 ? [data[0]!, data[0]!] : data}
             width={width - 28}
             height={200}
             startTs={startTs}

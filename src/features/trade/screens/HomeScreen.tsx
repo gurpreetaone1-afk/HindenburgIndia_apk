@@ -86,7 +86,9 @@ export function HomeScreen() {
   // Market Overview + News are India-market-centric. Only render on the
   // Stocks tab; Forex / Crypto have their own feed sources covered by
   // the IndicesStrip + IntradayChartCard.
-  const showIndianSections = tab === "Stocks";
+  // Market Overview + News on every tab (user wants them under Forex/Crypto
+  // too, not just Stocks).
+  const showIndianSections = true;
 
   return (
     <Screen>
