@@ -1,44 +1,48 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@shared/ui/Text";
 import { Input } from "@shared/ui/Input";
 import { GradientButton } from "@shared/ui/GradientButton";
 import { colors } from "@shared/theme";
-import { mmkv } from "@core/storage/mmkv";
 import { useUiStore } from "@shared/store/ui.store";
+import { useApiAccess, useSubmitApiAccess } from "@features/profile/hooks/useApiAccess";
 
-// Local-only "API Access" section. It does NOT talk to any backend — the
-// client pastes their API key/link and taps Connect; we persist it on-device
-// and mark it "pending admin approval". A real approval flip to "connected"
-// would come from the backend later; until then it stays pending. Purely a
-// UI/section placeholder per product spec.
-const KEY_STORE = "nb.apiKey";
-const STATUS_STORE = "nb.apiStatus";
-
-type ApiStatus = "idle" | "pending" | "connected";
-
+// "API Access" section — now backed by the real backend. The client pastes
+// their API key and taps Connect; it lands as a PENDING request the admin
+// approves/rejects from the admin panel. Status (idle / pending / approved /
+// rejected) comes from GET /user/api-access and flips live via the
+// `api_access` user WS event (UserEventsProvider invalidates the query).
 function ApiAccessRowImpl() {
   const pushToast = useUiStore((s) => s.pushToast);
   const [expanded, setExpanded] = useState(false);
-  const [apiKey, setApiKey] = useState(() => mmkv.getString(KEY_STORE) ?? "");
-  const [status, setStatus] = useState<ApiStatus>(
-    () => (mmkv.getString(STATUS_STORE) as ApiStatus | null) ?? "idle",
-  );
-  const [busy, setBusy] = useState(false);
+  const { data } = useApiAccess();
+  const submit = useSubmitApiAccess();
 
-  const connected = status === "connected";
-  const pending = status === "pending";
+  const status = data?.status ?? "idle";
+  const connected = status === "APPROVED";
+  const pending = status === "PENDING";
+  const rejected = status === "REJECTED";
+
+  // Seed the input from the server's stored key, but don't clobber what the
+  // user is typing once they've started editing.
+  const [apiKey, setApiKey] = useState("");
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (!touched && data?.api_key) setApiKey(data.api_key);
+  }, [data?.api_key, touched]);
 
   const subtitle = connected
     ? "Connected"
     : pending
       ? "Pending admin approval"
-      : "Securely manage API keys";
+      : rejected
+        ? "Request rejected"
+        : "Securely manage API keys";
   const subtitleColor = connected
     ? colors.buy
-    : pending
-      ? colors.textMuted
+    : rejected
+      ? colors.sell
       : colors.textMuted;
 
   function connect() {
@@ -47,14 +51,17 @@ function ApiAccessRowImpl() {
       pushToast({ kind: "warn", message: "Please enter your API key first" });
       return;
     }
-    setBusy(true);
-    mmkv.setString(KEY_STORE, k);
-    mmkv.setString(STATUS_STORE, "pending");
-    setStatus("pending");
-    setBusy(false);
-    pushToast({
-      kind: "success",
-      message: "API key submitted — pending admin approval",
+    submit.mutate(k, {
+      onSuccess: () => {
+        setTouched(false);
+        pushToast({
+          kind: "success",
+          message: "API key submitted — pending admin approval",
+        });
+      },
+      onError: (e) => {
+        pushToast({ kind: "error", message: e?.message || "Could not submit API key" });
+      },
     });
   }
 
@@ -88,9 +95,17 @@ function ApiAccessRowImpl() {
               }}
             >
               <Ionicons
-                name={pending ? "time-outline" : "checkmark-circle"}
+                name={
+                  connected
+                    ? "checkmark-circle"
+                    : rejected
+                      ? "close-circle"
+                      : pending
+                        ? "time-outline"
+                        : "key-outline"
+                }
                 size={13}
-                color={pending ? colors.textMuted : colors.buy}
+                color={subtitleColor}
               />
               <Text size="sm" style={{ color: subtitleColor }}>
                 {subtitle}
@@ -111,7 +126,10 @@ function ApiAccessRowImpl() {
         >
           <Input
             value={apiKey}
-            onChangeText={setApiKey}
+            onChangeText={(t) => {
+              setTouched(true);
+              setApiKey(t);
+            }}
             placeholder="Please put API Key in this section"
             autoCapitalize="none"
             autoCorrect={false}
@@ -127,14 +145,21 @@ function ApiAccessRowImpl() {
           ) : (
             <>
               <GradientButton
-                label={pending ? "Resubmit" : "Connect"}
-                loading={busy}
+                label={pending || rejected ? "Resubmit" : "Connect"}
+                loading={submit.isPending}
                 onPress={connect}
               />
               {pending ? (
                 <Text tone="dim" size="xs" style={{ textAlign: "center" }}>
                   Your request is with the admin. You&apos;ll be connected once
                   it&apos;s approved.
+                </Text>
+              ) : null}
+              {rejected ? (
+                <Text size="xs" style={{ textAlign: "center", color: colors.sell }}>
+                  {data?.rejection_reason
+                    ? `Rejected: ${data.rejection_reason}`
+                    : "Your request was rejected. Update the key and resubmit."}
                 </Text>
               ) : null}
             </>

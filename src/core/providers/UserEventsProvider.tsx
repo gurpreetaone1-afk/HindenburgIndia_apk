@@ -129,6 +129,13 @@ function handleEvent(
         void qc.invalidateQueries({ queryKey: ["kyc"] });
       });
       return;
+    case "api_access":
+      // Admin approved / rejected the user's API-access request — refetch so
+      // the Profile "API Access" card flips connected / rejected live.
+      notifyManager.batch(() => {
+        void qc.invalidateQueries({ queryKey: ["api-access"] });
+      });
+      return;
     case "notification": {
       // Only invalidate the notifications cache — DON'T push a toast.
       //
