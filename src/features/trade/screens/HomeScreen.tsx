@@ -21,16 +21,23 @@ interface SegmentEntry {
 }
 
 // Per-tab top strips. Stocks shows Indian indices (Zerodha feed); Crypto uses
-// the FREE Binance public feed (BINANCE_CRYPTO_FEED on the backend). Tokens
-// MUST be the raw codes the backend publishes ticks under — for crypto that's
-// the USDT-pair convention (BTCUSDT). Old FX_* / CRYPTO_* prefixed tokens
-// matched no tick → permanent "—", so we use the raw symbol. (Forex tab was
-// removed — it needs a paid feed.)
+// the FREE Binance public feed (BINANCE_CRYPTO_FEED on the backend); Forex is
+// fed by Infoway. Tokens MUST be the raw codes the backend publishes ticks
+// under — crypto uses the USDT-pair convention (BTCUSDT), forex the raw pair
+// (EURUSD). Old FX_* / CRYPTO_* prefixed tokens matched no tick → permanent
+// "—", so we use the raw symbol.
 const SEGMENT_TOKENS: Record<SegmentTab, SegmentEntry[]> = {
   Stocks: [
     { token: "256265", label: "NIFTY 50" },
     { token: "260105", label: "NIFTY BANK" },
     { token: "260617", label: "NIFTY 100" },
+  ],
+  Forex: [
+    { token: "EURUSD", label: "EUR / USD" },
+    { token: "GBPUSD", label: "GBP / USD" },
+    { token: "USDJPY", label: "USD / JPY" },
+    { token: "USDINR", label: "USD / INR" },
+    { token: "AUDUSD", label: "AUD / USD" },
   ],
   Crypto: [
     { token: "BTCUSDT", label: "BTC / USD" },

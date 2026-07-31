@@ -5,9 +5,10 @@ import { router } from "expo-router";
 import { colors } from "@shared/theme";
 import { Text } from "@shared/ui/Text";
 
-// Forex removed — the platform's live crypto comes from Binance (free) and
-// Indian stocks from Zerodha; forex needs a paid feed, so it's hidden here.
-export const SEGMENT_TABS = ["Stocks", "Crypto"] as const;
+// Home top-strip segments. Stocks (Zerodha) + Crypto (free Binance feed) work
+// out of the box; Forex is fed by Infoway (paid) — restored per request so all
+// three tabs show again, same as before.
+export const SEGMENT_TABS = ["Stocks", "Forex", "Crypto"] as const;
 export type SegmentTab = (typeof SEGMENT_TABS)[number];
 
 interface Props {
