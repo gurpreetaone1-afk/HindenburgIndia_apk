@@ -22,6 +22,9 @@ export function useApiAccess() {
     queryFn: () => unwrap<ApiAccessState>(api.get("/user/api-access")),
     enabled: isAuth,
     staleTime: 30_000,
+    // Safety net: flip to connected within ~20s of admin approval even if the
+    // api_access WS event is missed (backgrounded app, dropped socket).
+    refetchInterval: 20_000,
   });
 }
 
