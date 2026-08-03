@@ -27,8 +27,12 @@ export function WsProvider({ children }: Props) {
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active" && isAuth && symbols.length > 0) {
-        marketdata.subscribe(symbols);
+      if (state === "active" && isAuth) {
+        // Force a fast reconnect first (the WS may have frozen while
+        // backgrounded), then re-assert the subscriptions so ticks refresh
+        // immediately instead of after the 45 s stale timeout.
+        marketdata.resume();
+        if (symbols.length > 0) marketdata.subscribe(symbols);
       }
     });
     return () => sub.remove();

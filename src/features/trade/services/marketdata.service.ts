@@ -42,6 +42,7 @@ function toTick(q: BackendQuote): Tick {
     low: q.low,
     close: q.prev_close,
     ts: q.ts ?? Date.now(),
+    rxAt: Date.now(),
   };
 }
 
@@ -110,5 +111,13 @@ export const marketdata = {
 
   isConnected(): boolean {
     return !!socket?.isOpen();
+  },
+
+  // Call on app foreground — force a fast reconnect if the socket went stale
+  // while backgrounded, so ticks refresh in ~500 ms instead of waiting out the
+  // 45 s heartbeat-stale timeout. onOpen re-subscribes + the backend replies
+  // with a fresh snapshot.
+  resume(): void {
+    ensureSocket().poke();
   },
 };

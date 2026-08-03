@@ -57,6 +57,23 @@ export class ReconnectingSocket {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  /** Force a fast reconnect if the socket is closed or has gone quiet (app
+   *  was backgrounded → the OS froze the WS without a close event). Resets the
+   *  backoff so it reconnects in ~500 ms instead of the 45 s heartbeat-stale
+   *  path. No-op when the socket is open AND recently active. */
+  poke(idleMs = 8_000): void {
+    this.closedByUser = false;
+    if (!this.isOpen()) {
+      this.attempt = 0;
+      this.open();
+      return;
+    }
+    if (Date.now() - this.lastRxAt > idleMs) {
+      this.attempt = 0;
+      this.ws?.close(); // → onclose → scheduleReconnect (fast, attempt=0)
+    }
+  }
+
   private open(): void {
     try {
       this.ws = new WebSocket(this.opts.url, this.opts.protocols);

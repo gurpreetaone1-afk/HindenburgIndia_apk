@@ -32,6 +32,11 @@ export interface Tick {
   low?: number;
   close?: number;
   ts: number;
+  // Device wall-clock (Date.now) at the moment this tick was RECEIVED — used
+  // to detect a stale feed (app backgrounded → WS frozen) without trusting the
+  // server `ts` against a possibly-skewed device clock. Guards market fills
+  // from using a stale price.
+  rxAt?: number;
 }
 
 export interface DepthLevel {

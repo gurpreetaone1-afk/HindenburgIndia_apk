@@ -211,6 +211,11 @@ export const TradeSheet = forwardRef<TradeSheetRef, TradeSheetProps>(({ initialA
   const ltp = tick?.ltp ?? quote.data?.ltp ?? null;
   const bid = tick?.bid ?? quote.data?.bid ?? ltp ?? null;
   const ask = tick?.ask ?? quote.data?.ask ?? ltp ?? null;
+  // Only pin the market fill to the on-screen price when the WS tick is FRESH.
+  // A backgrounded app freezes the feed; sending that stale bid/ask as
+  // expected_price made a BUY fill at a rate the market had already moved off.
+  // Stale → send no expected_price, so the backend fills at its own live LTP.
+  const priceFresh = tick?.rxAt != null && Date.now() - tick.rxAt < 10_000;
   const change = tick?.change ?? quote.data?.change ?? 0;
   const changePct = tick?.change_pct ?? quote.data?.change_pct ?? 0;
   const open = tick?.open ?? quote.data?.open ?? 0;
@@ -677,7 +682,8 @@ export const TradeSheet = forwardRef<TradeSheetRef, TradeSheetProps>(({ initialA
       // Backend's matching engine uses this to fill MARKET orders at the
       // exact bid/ask the user saw — eliminates tick-slip on volatile
       // instruments. Mirrors the web's TradeDetailSheet.
-      expected_price: mode === "market" ? (action === "BUY" ? ask : bid) : null,
+      expected_price:
+        mode === "market" && priceFresh ? (action === "BUY" ? ask : bid) : null,
       // UI-only hint — usePlaceOrder uses this to label the optimistic
       // position row on the Portfolio tab so the user sees the right
       // symbol immediately, before the WS push replaces the row.
