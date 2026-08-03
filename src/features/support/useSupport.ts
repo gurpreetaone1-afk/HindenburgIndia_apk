@@ -26,8 +26,12 @@ export function useSupportContacts() {
     queryKey: ["support", "contacts"],
     queryFn: () => unwrap<SupportContacts>(api.get("/user/support")),
     enabled: isAuth,
-    staleTime: 10 * 60_000,
+    // Admin can change the support number any time — keep it fresh so users
+    // see the update fast (on app foreground via focusManager, and within a
+    // minute while open) instead of the old 10-min hard cache.
+    staleTime: 30_000,
     gcTime: 30 * 60_000,
+    refetchInterval: 60_000,
     retry: 1,
   });
 }
