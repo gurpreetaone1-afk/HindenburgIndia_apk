@@ -36,6 +36,7 @@ import {
   useUpdatePositionSlTp,
 } from "@features/portfolio/hooks/usePositions";
 import { useTickerStore } from "@features/trade/store/ticker.store";
+import { computeLivePnl, safeCloseSide } from "@features/portfolio/hooks/useLiveWalletKpi";
 import { useLastInstrumentStore } from "@features/charts/store/lastInstrument.store";
 import { useUiStore } from "@shared/store/ui.store";
 import type { Position } from "@features/portfolio/types/position.types";
@@ -550,17 +551,22 @@ function LivePositionRow({
   const tick = useTickerStore((s) =>
     position.instrument_token ? s.ticks[position.instrument_token] : undefined,
   );
-  const ltp = tick?.ltp ?? Number(position.ltp);
   const avg = Number(position.avg_price);
-  const qty = position.quantity;
-  // Live unrealised P&L = (ltp - avg) × qty + already-booked realised.
-  // For USD-quoted instruments the backend FX-converts on its next REST
-  // poll (3s); this local recompute is best-effort native-currency only,
-  // which is still directionally correct between polls.
-  const livePnl =
-    Number.isFinite(ltp) && Number.isFinite(avg)
-      ? (ltp - avg) * qty + Number(position.realized_pnl ?? 0)
-      : Number(position.unrealized_pnl ?? 0);
+  const qty = position.quantity; // signed
+  const side: "BUY" | "SELL" = qty > 0 ? "BUY" : "SELL";
+  // IDENTICAL computation to the Portfolio page's row (safeCloseSide → bid for
+  // a long / ask for a short, then computeLivePnl) so the P&L matches to the
+  // cent across Positions / Active / this chart list — same tick store, same
+  // close-side price, no per-page drift.
+  const closeSide = safeCloseSide(tick?.ltp, tick?.bid, tick?.ask, side);
+  const ltp = closeSide ?? tick?.ltp ?? Number(position.ltp);
+  const livePnl = computeLivePnl({
+    serverPnl: Number(position.unrealized_pnl) || 0,
+    liveLtp: closeSide,
+    avg,
+    qty,
+    isUsd: position.currency_quote === "USD",
+  });
 
   const row: PositionRowData = {
     id: position.id,
