@@ -1,7 +1,12 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Tick } from "@features/trade/types/instrument.types";
+
+// NO persistence: this store is written on EVERY incoming tick (sub-second via
+// the realtime WS hub). Persisting it wrapped each tick in a full
+// JSON.stringify(ticks+series) + AsyncStorage write on the JS thread, which
+// blocked re-renders and made prices crawl (~5-6 s) on the Positions/chart
+// screens. Ticks are volatile — the WS snapshot repaints them in <1 s on a
+// cold open — so keep the store purely in-memory for ms-fast updates.
 
 const SPARK_MAX = 80;
 
@@ -47,10 +52,9 @@ function pushSeries(prev: SeriesEntry | undefined, ltp: number, ts: number): Ser
 }
 
 export const useTickerStore = create<TickerState>()(
-  persist(
-    (set) => ({
-      ticks: {},
-      series: {},
+  (set) => ({
+    ticks: {},
+    series: {},
 
       setTick: (t) =>
         set((s) => {
@@ -81,20 +85,6 @@ export const useTickerStore = create<TickerState>()(
 
       clear: () => set({ ticks: {}, series: {} }),
     }),
-    {
-      name: "ticker-cache.v1",
-      storage: createJSONStorage(() => AsyncStorage),
-      partialize: (s) => ({ ticks: s.ticks, series: s.series }),
-      version: 3,
-      migrate: () => ({
-        // The series shape changed across versions; drop the old payload
-        // rather than try to reconstruct it. Live ticks repopulate in
-        // seconds.
-        ticks: {},
-        series: {},
-      }),
-    },
-  ),
 );
 
 export const selectTick = (symbol: string) => (s: TickerState) => s.ticks[symbol];
