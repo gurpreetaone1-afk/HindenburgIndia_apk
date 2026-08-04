@@ -41,7 +41,13 @@ function toTick(q: BackendQuote): Tick {
     high: q.high,
     low: q.low,
     close: q.prev_close,
-    ts: q.ts ?? Date.now(),
+    // Order ticks by DEVICE arrival time, not the server `ts`. Realtime
+    // hub frames carry no `ts` (→ device now) while the 5 s pump frames carry
+    // the SERVER epoch — mixing the two clocks let a pump frame's server ts
+    // (if the server clock ran ahead) block the next second of realtime ticks
+    // in the store's `prev.ts < t.ts` guard, freezing prices for seconds.
+    // Frames arrive in order on one socket, so arrival time is monotonic.
+    ts: Date.now(),
     rxAt: Date.now(),
   };
 }

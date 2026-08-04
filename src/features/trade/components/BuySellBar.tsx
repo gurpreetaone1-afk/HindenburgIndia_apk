@@ -125,18 +125,13 @@ function BuySellBarImpl({
 }: Props) {
   const tick = useTicker(token ?? null);
   const live = token ? tick : undefined;
-  // Buttons must tick as fast as the CHART. LTP updates on every tick, but the
-  // depth-book bid/ask can lag it (or be absent on LTP-mode ticks) — showing
-  // raw bid/ask made the buttons look frozen while the chart moved. So anchor
-  // both to the fast-moving LTP and just re-apply the real half-spread around
-  // it. Fills happen at LTP anyway (B-book), so this is also more honest.
-  const mid = live?.ltp;
-  const halfSpread =
-    live?.bid != null && live?.ask != null && live.ask > live.bid
-      ? (live.ask - live.bid) / 2
-      : 0;
-  const bid = mid != null ? mid - halfSpread : live?.bid;
-  const ask = mid != null ? mid + halfSpread : live?.ask;
+  // Show the depth-book bid/ask directly. These are the FAST-moving fields:
+  // for MCX/NSE the LTP only changes on an actual TRADE (can hold for many
+  // seconds on a quiet instrument), while bid/ask re-quote every tick. Binding
+  // the buttons to bid/ask (Zerodha/Upstox do the same) keeps them moving in
+  // real time; LTP is only a fallback when depth is momentarily absent.
+  const bid = live?.bid ?? live?.ltp;
+  const ask = live?.ask ?? live?.ltp;
   const place = usePlaceOrder();
   const pushToast = useUiStore((s) => s.pushToast);
 
