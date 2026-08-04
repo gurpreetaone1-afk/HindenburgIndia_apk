@@ -1,10 +1,12 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { colors } from "@shared/theme";
 import { useThemeStore } from "@shared/store/theme.store";
 import { getAccessToken } from "@core/api/tokens";
 import { env } from "@core/config/env";
+import { useTickerStore } from "@features/trade/store/ticker.store";
+import { useTickerSubscription } from "@features/trade/hooks/useTickers";
 import type { ChartInterval } from "@features/charts/hooks/useHistory";
 
 // The FULL licensed TradingView Charting Library — the SAME one the web
@@ -112,6 +114,25 @@ function priceScaleFor(){
   return 100;
 }
 
+var LAST_BAR = null;
+var ON_TICK = null;
+// Pushed from React Native on EVERY live WS tick — moves the CURRENT candle's
+// close / high / low so the chart ticks in real time instead of waiting on the
+// slow /history poll. This is what makes forex / XAUUSD / Indian charts move.
+window.__liveTick = function(price){
+  price = Number(price);
+  if (!ON_TICK || !LAST_BAR || !isFinite(price) || price <= 0) return;
+  LAST_BAR = {
+    time: LAST_BAR.time,
+    open: LAST_BAR.open,
+    high: Math.max(Number(LAST_BAR.high), price),
+    low: Math.min(Number(LAST_BAR.low), price),
+    close: price,
+    volume: LAST_BAR.volume || 0,
+  };
+  ON_TICK(LAST_BAR);
+};
+
 var datafeed = {
   onReady: function(cb){ setTimeout(function(){ cb({ supported_resolutions:["1","5","15","60","1D"], supports_time:true }); }, 0); },
   searchSymbols: function(_a,_b,_c,onResult){ onResult([]); },
@@ -132,17 +153,22 @@ var datafeed = {
       var interval = RES_TO_API[resolution] || "5minute";
       var days = DAYS_FOR_RES[resolution] || 15;
       var bars = await fetchHistory(interval, days);
+      if (bars.length) LAST_BAR = bars[bars.length-1];
       onResult(bars, { noData: bars.length === 0 });
     } catch (e) { onError(String(e)); }
   },
   subscribeBars: function(symbolInfo, resolution, onTick, guid){
     var interval = RES_TO_API[resolution] || "5minute";
+    ON_TICK = onTick;
+    // Slow poll only to pull NEW candles / correct the last one — live
+    // intra-candle movement comes from window.__liveTick (RN WS), so this no
+    // longer drives the visible ticking and can be relaxed.
     SUBS[guid] = setInterval(async function(){
       try {
         var bars = await fetchHistory(interval, 1);
-        if (bars.length) onTick(bars[bars.length-1]);
+        if (bars.length) { LAST_BAR = bars[bars.length-1]; onTick(bars[bars.length-1]); }
       } catch(e){}
-    }, 8000);
+    }, 5000);
   },
   unsubscribeBars: function(guid){ if (SUBS[guid]) { clearInterval(SUBS[guid]); delete SUBS[guid]; } },
 };
@@ -195,6 +221,20 @@ function LicensedTVChartImpl({ token, symbol, interval }: Props) {
   const theme: "light" | "dark" = resolved === "light" ? "light" : "dark";
   const jwt = getAccessToken() ?? "";
 
+  // Feed live WS ticks INTO the chart's WebView so the current candle moves in
+  // real time (the datafeed's own /history poll is only a 5s new-candle
+  // fallback). Ensure the token is subscribed, then inject each LTP.
+  const webRef = useRef<WebView>(null);
+  useTickerSubscription(token ? [token] : []);
+  const ltp = useTickerStore((s) => (token ? s.ticks[token]?.ltp : undefined));
+  useEffect(() => {
+    if (webRef.current && typeof ltp === "number" && Number.isFinite(ltp)) {
+      webRef.current.injectJavaScript(
+        `window.__liveTick&&window.__liveTick(${ltp});true;`,
+      );
+    }
+  }, [ltp]);
+
   const html = useMemo(
     () =>
       buildHtml({
@@ -211,6 +251,7 @@ function LicensedTVChartImpl({ token, symbol, interval }: Props) {
   return (
     <View style={styles.root}>
       <WebView
+        ref={webRef}
         key={`${token}|${interval}|${theme}`}
         originWhitelist={["*"]}
         source={{ html, baseUrl: `${LIB_HOST}/` }}
