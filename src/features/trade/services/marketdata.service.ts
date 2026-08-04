@@ -56,7 +56,13 @@ let socket: ReconnectingSocket | null = null;
 const batcher = createBatcher<Tick>((batch) => {
   useTickerStore.getState().setManyTicks(batch);
 });
-const subscribed = new Set<string>();
+// Ref-counted subscriptions. Multiple components can want the SAME token at
+// once (e.g. the chart screen mounts both BuySellBar via useTicker AND
+// LicensedTVChart via useTickerSubscription). With a plain Set, the first
+// component to unmount sent `unsubscribe` and killed the feed for the sibling
+// still on screen → prices froze. Count refs instead: only tell the backend to
+// subscribe on 0→1 and unsubscribe on 1→0.
+const subCounts = new Map<string, number>();
 
 function buildUrl(): string {
   const token = getAccessToken();
@@ -74,8 +80,8 @@ function ensureSocket(): ReconnectingSocket {
   });
   socket.onOpen(() => {
     log.info("marketdata ws open");
-    if (subscribed.size > 0) {
-      socket?.send({ type: "subscribe", tokens: Array.from(subscribed) });
+    if (subCounts.size > 0) {
+      socket?.send({ type: "subscribe", tokens: Array.from(subCounts.keys()) });
     }
   });
   socket.onMessage((msg) => {
@@ -97,21 +103,33 @@ function ensureSocket(): ReconnectingSocket {
 export const marketdata = {
   subscribe(tokens: string[]): void {
     const s = ensureSocket();
-    const next = tokens.filter((t) => !subscribed.has(t));
-    next.forEach((t) => subscribed.add(t));
-    if (next.length > 0) s.send({ type: "subscribe", tokens: next });
+    const fresh: string[] = [];
+    for (const t of tokens) {
+      const c = subCounts.get(t) ?? 0;
+      subCounts.set(t, c + 1);
+      if (c === 0) fresh.push(t); // 0→1: newly needed
+    }
+    if (fresh.length > 0) s.send({ type: "subscribe", tokens: fresh });
   },
 
   unsubscribe(tokens: string[]): void {
-    const next = tokens.filter((t) => subscribed.has(t));
-    next.forEach((t) => subscribed.delete(t));
-    if (next.length > 0) socket?.send({ type: "unsubscribe", tokens: next });
+    const gone: string[] = [];
+    for (const t of tokens) {
+      const c = subCounts.get(t) ?? 0;
+      if (c <= 1) {
+        subCounts.delete(t);
+        if (c === 1) gone.push(t); // 1→0: no one wants it anymore
+      } else {
+        subCounts.set(t, c - 1);
+      }
+    }
+    if (gone.length > 0) socket?.send({ type: "unsubscribe", tokens: gone });
   },
 
   disconnect(): void {
     socket?.close();
     socket = null;
-    subscribed.clear();
+    subCounts.clear();
     batcher.clear();
   },
 
